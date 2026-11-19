@@ -1,0 +1,86 @@
+{
+  "case": {
+    "id": "AR-103",
+    "employee_id": "E-304",
+    "employee_end_at": "2026-10-31T18:00:00+03:00",
+    "account_id": "A-204",
+    "repository": "build-config",
+    "role": "Admin",
+    "decision": {
+      "reviewer": "demo-reviewer",
+      "action": "revoke_role",
+      "recorded_at": "2026-11-19T09:05:00+03:00",
+      "reason": "Close the former employee's administrative grant on the repository."
+    }
+  },
+  "snapshots": [
+    {
+      "id": "before-decision",
+      "stage": "baseline",
+      "repository": "build-config",
+      "captured_at": "2026-11-19T09:00:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-204",
+              "repository": "build-config",
+              "role": "Admin"
+            }
+          ]
+        },
+        "team_memberships": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-204",
+              "team_id": "release-engineering"
+            }
+          ]
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "build-config",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "both-paths-removed",
+      "stage": "follow_up",
+      "repository": "build-config",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": []
+        },
+        "team_memberships": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-207",
+              "team_id": "release-engineering"
+            }
+          ]
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "build-config",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

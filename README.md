@@ -52,6 +52,20 @@ Evidence pointers use zero-based snapshot and data record indexes. The manifest 
 
 Use a header-only file with `complete: true` to record an empty export. Set `complete: false` for partial data and omit a source when its export is unavailable. A missing or malformed file named in the manifest stops the replay.
 
+## Review a batch
+
+Run several cases and open the resulting Markdown report.
+
+```sh
+python3 batch_review.py examples/batch/manifest.json --output output/batch
+```
+
+`output/batch/report.md` lists cases with remaining access first, then cases that need evidence, then verified removals. Each row identifies the reviewed follow-up, explains the result, and links to its evidence packet.
+
+Use `scenario` for a JSON case or `exports` for a CSV manifest. Input paths are relative to the batch manifest, and case IDs must be unique. Each case needs a follow-up snapshot. When a case has several, set `follow_up` to the snapshot ID the report should use. [Example batch manifest](examples/batch/manifest.json)
+
+Choose a new output directory for each run. The batch validates every case before publishing the report and packets together.
+
 ## Evidence model
 
 The baseline must show the scoped grant at or after departure and before the recorded revocation decision. Follow-up snapshots must cover the same repository and occur after that decision.

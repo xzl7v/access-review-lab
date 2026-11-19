@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "scenario": "verified-removed.json"
+    },
+    {
+      "scenario": "needs-evidence.json"
+    },
+    {
+      "scenario": "still-granted.json"
+    }
+  ]
+}
