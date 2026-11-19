@@ -8,7 +8,11 @@
 
 الديمو يتيح لك تتنقل بين اللقطات وتفتح الأدلة بنفسك. وأرفقت مع الكود حزمة JSON تقدر تعيد التحقق منها وسجلًا محليًا لقرارات المراجعة.
 
-رابط GitHub — [أضف رابط المستودع بعد رفعه]
+الديمو التفاعلي
+https://xzl7v.github.io/access-review-lab/
+
+الكود على GitHub
+https://github.com/xzl7v/access-review-lab
 
 #IAM #Cybersecurity #AccessReview #SecurityEngineering
 

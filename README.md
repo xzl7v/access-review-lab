@@ -6,6 +6,8 @@ Reproduce a workforce access review from dated exports. Trace direct and team gr
 
 ## Open the demo
 
+Open the [live demo on GitHub Pages](https://xzl7v.github.io/access-review-lab/).
+
 Open [docs/index.html](docs/index.html) in a browser after cloning or extracting the project. Start with **Direct grant removed** and click **Member of** or **Grants Admin** to inspect a source record. **Evidence JSON** provides the packet behind all four views. The page contains the packet for standalone offline use.
 
 The single synthetic case follows employee `E-102` and account `A-202` on `release-runbooks`. Both 09:25 rows show alternative exports captured at the same time.
