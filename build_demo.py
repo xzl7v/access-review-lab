@@ -1,14 +1,16 @@
-"""Generate the portable demo and its evidence packet from the bundled case."""
+"""Generate the portable demo, evidence viewer, and bundled packet."""
 
 from __future__ import annotations
 
 import argparse
 from base64 import b64encode
 from datetime import datetime
+from hashlib import sha256
 from html import escape
 from pathlib import Path
 from string import Template
 
+from csv_exports import read_csv_exports
 from evidence import build_packet, load_json, pretty_json, write_atomic
 
 ROOT = Path(__file__).resolve().parent
@@ -242,6 +244,18 @@ def render_demo(packet: dict, layout: Template) -> str:
     )
 
 
+def render_viewer() -> str:
+    sample = read_csv_exports(ROOT / "examples" / "csv" / "manifest.json", include_provenance=True)
+    packet = build_packet(sample.scenario, source_provenance=sample.source_provenance)
+    script = (ROOT / "web" / "viewer.js").read_text(encoding="utf-8")
+    layout = Template((ROOT / "web" / "viewer.html").read_text(encoding="utf-8"))
+    return layout.substitute(
+        evidence_payload=b64encode(pretty_json(packet).encode("utf-8")).decode("ascii"),
+        script_hash=b64encode(sha256(script.encode("utf-8")).digest()).decode("ascii"),
+        viewer_script=script,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Check that the published assets match the case.")
@@ -252,6 +266,7 @@ def main() -> int:
     assets = {
         ROOT / "docs" / "index.html": render_demo(packet, layout),
         ROOT / "docs" / "evidence.json": pretty_json(packet),
+        ROOT / "docs" / "viewer.html": render_viewer(),
     }
     for path, content in assets.items():
         if args.check:
@@ -259,7 +274,7 @@ def main() -> int:
                 parser.exit(1, f"Demo asset out of date · {path.relative_to(ROOT)}\n")
         else:
             write_atomic(path, content)
-    print("Demo matches the replay." if args.check else "Generated docs/index.html and docs/evidence.json.")
+    print("Demo and viewer match the replay." if args.check else "Generated the demo and viewer in docs/.")
     return 0
 
 

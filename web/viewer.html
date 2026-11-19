@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'sha256-$script_hash'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>Evidence Viewer | Access Review Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      color: #edf4f8;
+      background: #0b1219;
+      --canvas: #0b1219;
+      --panel: #111b25;
+      --surface: #172531;
+      --border: #314555;
+      --muted: #a8bbc9;
+      --mint: #91e6d0;
+      --amber: #ffd491;
+      --red: #ffc1b6;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    h1, h2, h3, p, dl, dd, pre { margin: 0; }
+    code, pre, time { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; }
+    a { color: var(--mint); text-underline-offset: 4px; }
+    :is(a, button):focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+    .frame { width: min(1240px, calc(100% - 48px)); margin-inline: auto; }
+    .masthead { border-bottom: 1px solid var(--border); }
+    .masthead .frame { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; }
+    .brand { color: inherit; font-weight: 680; text-decoration: none; }
+    main.frame { padding-block: 34px 46px; }
+    .intro { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 16px; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.1; }
+    .intro p { margin-top: 8px; color: var(--muted); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      min-height: 40px;
+      padding: 6px 12px;
+      overflow-wrap: anywhere;
+    }
+    button:hover { border-color: #678897; }
+    .primary { color: #102b27; background: var(--mint); border-color: var(--mint); font-weight: 700; }
+    .primary:hover { background: #b5f1e2; }
+    .load-status { margin-block: 15px 18px; color: var(--muted); overflow-wrap: anywhere; font-size: .9rem; }
+    .load-error { margin-block: 0 18px; padding: 10px 12px; border: 1px solid #785047; border-radius: 8px; color: var(--red); }
+    .panel { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+    .case-strip { margin-bottom: 16px; }
+    .case-strip h2 { font-size: 1.13rem; overflow-wrap: anywhere; }
+    .case-fields { display: flex; flex-wrap: wrap; gap: 9px 26px; margin-top: 10px; }
+    .fields dt { color: var(--muted); font-size: .875rem; }
+    .fields dd { overflow-wrap: anywhere; font-weight: 560; }
+    .inspection { display: grid; grid-template-columns: minmax(160px, .67fr) minmax(0, 1.34fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .panel-title { font-size: 1rem; font-weight: 680; }
+    .snapshot-options { display: grid; gap: 7px; margin-top: 12px; }
+    .snapshot-option, .record-option { width: 100%; text-align: left; }
+    .snapshot-option time { display: block; color: var(--muted); font-size: .8rem; }
+    .snapshot-option[aria-pressed="true"], .record-option[aria-pressed="true"] {
+      background: #16302e;
+      border-color: var(--mint);
+      color: var(--mint);
+    }
+    .result { display: inline-block; color: var(--amber); font-size: .9rem; font-weight: 700; }
+    .result[data-verdict="verified_removed"] { color: var(--mint); }
+    .result[data-verdict="inconclusive"] { color: #a6caff; }
+    .snapshot-title { margin-top: 3px; font-size: 1.42rem; line-height: 1.18; overflow-wrap: anywhere; }
+    .stamp, .reason { color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+    .stamp { display: block; font-size: .86rem; }
+    .section-title { font-size: .97rem; margin-block: 18px 9px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .paths { display: grid; gap: 12px; }
+    .path h3 { font-size: .9rem; overflow-wrap: anywhere; }
+    .path ol { display: grid; gap: 6px; padding-left: 1.6rem; margin-block: 7px 0; }
+    .path li::marker { color: var(--muted); font-size: .85rem; }
+    .quiet { color: var(--muted); font-size: .94rem; }
+    .coverage-list { display: grid; gap: 6px; }
+    .coverage-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+    .coverage-state { font-size: .875rem; color: var(--amber); }
+    .coverage-state[data-state="complete"] { color: var(--mint); }
+    .snapshot-records { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .snapshot-records button { width: auto; }
+    .record-heading { font-size: 1.15rem; margin-top: 7px; overflow-wrap: anywhere; }
+    .record-reference { display: block; margin-top: 7px; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere; }
+    .source-fields { display: grid; gap: 9px; margin-top: 13px; }
+    .source-fields dd { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; font-size: .88rem; }
+    pre { margin-top: 14px; padding: 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--canvas);
+          font-size: .86rem; overflow: auto; max-height: 22rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 1050px) {
+      .inspection { grid-template-columns: minmax(155px, .55fr) minmax(0, 1.65fr); }
+      #record-pane { grid-column: 2; }
+    }
+    @media (max-width: 690px) {
+      .frame { width: calc(100% - 28px); }
+      .inspection { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      #record-pane { grid-column: auto; }
+      .snapshot-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      main.frame { padding-top: 22px; }
+    }
+    @media (max-width: 390px) {
+      .snapshot-options { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="frame">
+      <a class="brand" href="index.html">Access Review Lab</a>
+      <a href="index.html">Guided demo</a>
+    </div>
+  </header>
+  <main class="frame">
+    <div class="intro">
+      <div>
+        <h1>Evidence Viewer</h1>
+        <p>Inspect a review packet from this device.</p>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" id="open-packet">Open evidence packet</button>
+        <button type="button" id="load-sample">Load sample</button>
+        <input type="file" id="packet-file" aria-label="Evidence packet" accept=".json,application/json" hidden>
+      </div>
+    </div>
+    <p class="load-status" id="load-status" role="status"></p>
+    <p class="load-error" id="load-error" role="alert" hidden></p>
+    <noscript>Enable JavaScript to open evidence packets.</noscript>
+    <div id="packet-view" hidden>
+      <section class="panel case-strip" aria-labelledby="case-title">
+        <h2 id="case-title"></h2>
+        <dl class="fields case-fields" id="case-fields"></dl>
+      </section>
+      <div class="inspection">
+        <nav class="panel" aria-labelledby="snapshots-title">
+          <h2 class="panel-title" id="snapshots-title">Snapshots</h2>
+          <div class="snapshot-options" id="snapshot-options"></div>
+        </nav>
+        <section class="panel" aria-labelledby="snapshot-title">
+          <p class="result" id="snapshot-result"></p>
+          <h2 class="snapshot-title" id="snapshot-title"></h2>
+          <time class="stamp" id="snapshot-time"></time>
+          <p class="reason" id="snapshot-reason"></p>
+          <h3 class="section-title">Access paths</h3>
+          <div class="paths" id="access-paths"></div>
+          <h3 class="section-title">Source coverage</h3>
+          <div class="coverage-list" id="source-coverage"></div>
+          <div class="snapshot-records" id="snapshot-records"></div>
+        </section>
+        <section class="panel" id="record-pane" aria-labelledby="record-pane-title">
+          <h2 class="panel-title" id="record-pane-title">Source evidence</h2>
+          <h3 class="record-heading" id="record-title"></h3>
+          <code class="record-reference" id="record-reference"></code>
+          <dl class="fields source-fields" id="record-fields" hidden></dl>
+          <pre id="record-data"></pre>
+        </section>
+      </div>
+    </div>
+  </main>
+  <script type="text/plain" id="sample-packet">$evidence_payload</script>
+  <script>$viewer_script</script>
+</body>
+</html>
