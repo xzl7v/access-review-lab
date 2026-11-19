@@ -1,3 +1,4 @@
+from hashlib import sha256
 import json
 from pathlib import Path
 from shutil import copytree
@@ -114,3 +115,61 @@ class CsvExportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("CSV exports, output", result.stderr)
         self.assertEqual(source.read_bytes(), original)
+
+    def test_provenance_traces_cited_rows_to_hashed_csv_sources(self):
+        output = self.directory / "provenance.json"
+        result = self.run_replay("--provenance", "--output", str(output))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        packet = load_json(output)
+        legacy = load_json(ROOT / "docs" / "evidence.json")
+        self.assertEqual(packet["packet_version"], 2)
+        self.assertEqual(packet["input_sha256"], legacy["input_sha256"])
+        self.assertEqual(packet["observations"], legacy["observations"])
+        self.assertEqual(packet["evidence"], legacy["evidence"])
+
+        provenance = packet["provenance"]
+        cited_rows = {ref for observation in legacy["observations"] for path in observation["paths"]
+                      for ref in path["evidence"]}
+        self.assertEqual(set(provenance["records"]), cited_rows)
+        source_ref = "/snapshots/1/sources/team_memberships"
+        self.assertEqual(provenance["records"][source_ref + "/rows/0"],
+                         {"source_ref": source_ref, "record_number": 1})
+        self.assertEqual(provenance["sources"][source_ref], {
+            "file": "memberships-before.csv",
+            "sha256": sha256((self.exports / "memberships-before.csv").read_bytes()).hexdigest(),
+            "record_count": 1,
+        })
+        self.assertEqual(provenance["sources"]["/snapshots/1/sources/direct_grants"]["record_count"], 0)
+        self.assertNotIn("/snapshots/3/sources/team_memberships", provenance["sources"])
+        verified = self.run_replay("--provenance", "--verify", str(output))
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+
+    def test_raw_csv_change_fails_provenance_verification(self):
+        output = self.directory / "provenance.json"
+        result = self.run_replay("--provenance", "--output", str(output))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.exports / "direct-before.csv").write_bytes(
+            b"account_id,repository,role,notes\r\nA-202,release-runbooks,Admin,updated export note\r\n"
+        )
+        legacy = self.run_replay("--verify", str(ROOT / "docs" / "evidence.json"))
+        self.assertEqual(legacy.returncode, 0, legacy.stderr)
+        changed = self.run_replay("--provenance", "--verify", str(output))
+        self.assertEqual(changed.returncode, 2)
+        self.assertIn("CSV provenance", changed.stderr)
+        downgrade = self.run_replay("--provenance", "--verify", str(ROOT / "docs" / "evidence.json"))
+        self.assertEqual(downgrade.returncode, 2)
+
+    def test_provenance_record_numbers_handle_multiline_fields_and_blank_lines(self):
+        source = self.exports / "memberships-before.csv"
+        source.write_bytes(
+            b'account_id,team_id,notes\r\nA-999,other-team,"first\r\nsecond"\r\n\r\n'
+            b'A-202,release-engineering,"third"\r\n'
+        )
+        result = self.run_replay("--provenance", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        provenance = json.loads(result.stdout)["provenance"]
+        source_ref = "/snapshots/1/sources/team_memberships"
+        self.assertEqual(provenance["records"][source_ref + "/rows/1"]["record_number"], 2)
+        self.assertEqual(provenance["sources"][source_ref]["record_count"], 2)
+        self.assertEqual(provenance["sources"][source_ref]["sha256"],
+                         sha256(source.read_bytes()).hexdigest())

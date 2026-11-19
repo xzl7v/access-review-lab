@@ -12,6 +12,7 @@ from tempfile import NamedTemporaryFile
 from review import replay
 
 PACKET_VERSION = 1
+PROVENANCE_PACKET_VERSION = 2
 
 
 def resolve_input_file(directory: Path, reference: object, label: str) -> Path:
@@ -67,7 +68,7 @@ def resolve_pointer(document: dict, pointer: str) -> object:
     return value
 
 
-def build_packet(scenario: dict) -> dict:
+def build_packet(scenario: dict, *, source_provenance: dict | None = None) -> dict:
     scenario = deepcopy(scenario)
     result = replay(scenario)
     references = {"/case/decision"}
@@ -75,12 +76,20 @@ def build_packet(scenario: dict) -> dict:
         references.add(observation["snapshot_ref"])
         for path in observation["paths"]:
             references.update(path["evidence"])
-    return {
-        "packet_version": PACKET_VERSION,
+    packet = {
+        "packet_version": PACKET_VERSION if source_provenance is None else PROVENANCE_PACKET_VERSION,
         "input_sha256": digest(scenario),
         **result,
         "evidence": {ref: resolve_pointer(scenario, ref) for ref in sorted(references)},
     }
+    if source_provenance is not None:
+        records = {}
+        for ref in packet["evidence"]:
+            source, separator, index = ref.rpartition("/rows/")
+            if separator and source in source_provenance:
+                records[ref] = {"source_ref": source, "record_number": int(index) + 1}
+        packet["provenance"] = {"sources": deepcopy(source_provenance), "records": records}
+    return packet
 
 
 def write_atomic(path: Path, content: str) -> None:

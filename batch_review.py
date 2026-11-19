@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from csv_exports import load_csv_exports
+from csv_exports import read_csv_exports
 from evidence import build_packet, load_json, pretty_json, resolve_input_file
 
 VERDICTS = {
@@ -18,7 +18,7 @@ VERDICTS = {
 MARKDOWN_ENTITIES = str.maketrans({char: f"&#{ord(char)};" for char in r"\|&<>[]*_~`"})
 
 
-def _read_case(directory: Path, entry: object) -> tuple[dict, dict]:
+def _read_case(directory: Path, entry: object, *, include_provenance: bool) -> tuple[dict, dict]:
     input_names = {"scenario", "exports"}
     if not isinstance(entry, dict):
         raise ValueError("each case entry must be an object")
@@ -29,10 +29,10 @@ def _read_case(directory: Path, entry: object) -> tuple[dict, dict]:
     kind = inputs.pop()
     input_path = resolve_input_file(directory, entry[kind], "case input")
     if kind == "exports":
-        scenario, _ = load_csv_exports(input_path)
+        loaded = read_csv_exports(input_path, include_provenance=include_provenance)
+        packet = build_packet(loaded.scenario, source_provenance=loaded.source_provenance)
     else:
-        scenario = load_json(input_path)
-    packet = build_packet(scenario)
+        packet = build_packet(load_json(input_path))
     case_id = packet["case"]["id"]
     follow_ups = packet["observations"][1:]
     if not follow_ups:
@@ -48,7 +48,7 @@ def _read_case(directory: Path, entry: object) -> tuple[dict, dict]:
     raise ValueError(f"{entry['follow_up']!r} is not a follow-up snapshot in case {case_id}")
 
 
-def load_batch(manifest_path: Path) -> list[tuple[dict, dict]]:
+def load_batch(manifest_path: Path, *, include_provenance: bool = False) -> list[tuple[dict, dict]]:
     """Build and prioritize a packet and selected follow-up for each case."""
     manifest = load_json(manifest_path)
     entries = manifest.get("cases")
@@ -60,7 +60,7 @@ def load_batch(manifest_path: Path) -> list[tuple[dict, dict]]:
     case_ids = set()
     for index, entry in enumerate(entries, start=1):
         try:
-            packet, observation = _read_case(directory, entry)
+            packet, observation = _read_case(directory, entry, include_provenance=include_provenance)
         except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
             raise ValueError(f"case entry {index}: {exc}") from exc
         case_id = packet["case"]["id"]
@@ -103,12 +103,12 @@ def _render_report(reviews: list[tuple[dict, dict]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_batch(manifest_path: Path, output: Path) -> Path:
+def write_batch(manifest_path: Path, output: Path, *, include_provenance: bool = False) -> Path:
     """Publish one complete report directory from a validated batch."""
     output = output.absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"output path already exists: {output}. Choose a new directory.")
-    reviews = load_batch(manifest_path)
+    reviews = load_batch(manifest_path, include_provenance=include_provenance)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     with TemporaryDirectory(prefix=".access-review-", dir=output.parent) as staging:
@@ -126,10 +126,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path, help="JSON manifest containing the cases to review.")
     parser.add_argument("--output", type=Path, required=True, help="New directory for the report and evidence.")
+    parser.add_argument("--provenance", action="store_true", help="Include source provenance in CSV packets.")
     args = parser.parse_args()
 
     try:
-        report = write_batch(args.manifest, args.output)
+        report = write_batch(args.manifest, args.output, include_provenance=args.provenance)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Batch review error · {exc}\n")
     print(f"Report written to {report}")
