@@ -92,6 +92,19 @@ class BatchReviewTests(unittest.TestCase):
         json_packet = load_json(self.output / "evidence" / "002.json")
         self.assertEqual(json_packet, build_packet(load_json(self.inputs / "verified-removed.json")))
 
+    def test_capture_failure_is_in_the_report_and_batch_file(self):
+        copytree(ROOT / "examples" / "csv", self.inputs / "csv")
+        self.write_manifest([{"exports": "csv/checked-manifest.json", "follow_up": "stale-membership-export"}])
+        result = self.run_batch("--provenance")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = (self.output / "report.md").read_text(encoding="utf-8")
+        self.assertIn("| Needs evidence |", report)
+        self.assertIn("memberships-after.csv", report)
+        self.assertIn("differs from snapshot time", report)
+        review, = load_json(self.output / "batch.json")["reviews"]
+        observation = next(item for item in review["packet"]["observations"] if item["snapshot"] == review["follow_up"])
+        self.assertEqual(observation["source_coverage"]["team_memberships"], "invalid")
+
     def test_multiple_follow_ups_require_a_valid_selection(self):
         copytree(ROOT / "examples" / "csv", self.inputs / "csv")
         for selection, error in (

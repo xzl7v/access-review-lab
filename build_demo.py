@@ -246,7 +246,7 @@ def render_demo(packet: dict, layout: Template) -> str:
 
 
 def render_viewer() -> str:
-    sample = read_csv_exports(ROOT / "examples" / "csv" / "manifest.json", include_provenance=True)
+    sample = read_csv_exports(ROOT / "examples" / "csv" / "checked-manifest.json", include_provenance=True)
     packet = build_packet(sample.scenario, source_provenance=sample.source_provenance)
     batch = build_batch_packet(load_batch(ROOT / "examples" / "batch" / "manifest.json"))
     script = (ROOT / "web" / "viewer.js").read_text(encoding="utf-8")

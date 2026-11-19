@@ -7,7 +7,7 @@ const verdicts = {
   inconclusive: "Needs evidence",
 };
 const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 };
-const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing" };
+const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing", invalid: "Invalid" };
 const sourceLabels = {
   direct_grants: ["Direct grant", "Direct grants"],
   team_memberships: ["Team membership", "Team memberships"],

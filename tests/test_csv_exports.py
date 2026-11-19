@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -40,6 +41,76 @@ class CsvExportTests(unittest.TestCase):
         result = self.run_replay("--verify", str(published), "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, published.read_text(encoding="utf-8"))
+
+    def test_checked_manifest_reports_why_exports_are_invalid(self):
+        self.manifest = self.exports / "checked-manifest.json"
+        result = self.run_replay("--provenance", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observations = {item["snapshot"]: item for item in json.loads(result.stdout)["observations"]}
+        self.assertEqual(observations["both-paths-removed"]["verdict"], "verified_removed")
+        for snapshot, problem in (
+            ("stale-membership-export", "differs from snapshot time"),
+            ("wrong-repository-export", "differs from snapshot repository"),
+        ):
+            with self.subTest(snapshot=snapshot):
+                observation = observations[snapshot]
+                self.assertEqual(observation["verdict"], "inconclusive")
+                self.assertEqual(observation["source_coverage"]["team_memberships"], "invalid")
+                issue = observation["source_issues"]["team_memberships"]
+                self.assertEqual(issue["file"], "memberships-after.csv")
+                self.assertIn(problem, issue["reason"])
+                self.assertIn(issue["file"], observation["reason"])
+
+    def test_checked_capture_matches_equivalent_time_offsets(self):
+        self.data = load_json(self.exports / "checked-manifest.json")
+        snapshot = self.data["snapshots"][2]
+        utc = datetime.fromisoformat(snapshot["captured_at"]).astimezone(timezone.utc)
+        snapshot["sources"]["team_memberships"]["captured_at"] = utc.isoformat().replace("+00:00", "Z")
+        self.write_manifest()
+        scenario, _ = load_csv_exports(self.manifest)
+        observation = build_packet(scenario)["observations"][2]
+        self.assertEqual(observation["verdict"], "verified_removed")
+        self.assertEqual(observation["source_coverage"]["team_memberships"], "complete")
+
+    def test_checked_manifest_requires_capture_metadata_and_an_offset(self):
+        for metadata in ({}, {"captured_at": "2026-11-19T09:25:00", "repository": "release-runbooks"}):
+            with self.subTest(metadata=metadata):
+                self.data = load_json(self.exports / "checked-manifest.json")
+                source = self.data["snapshots"][2]["sources"]["team_memberships"]
+                source.pop("captured_at")
+                source.pop("repository")
+                source.update(metadata)
+                self.write_manifest()
+                scenario, _ = load_csv_exports(self.manifest)
+                observation = build_packet(scenario)["observations"][2]
+                issue = observation["source_issues"]["team_memberships"]
+                self.assertEqual(observation["verdict"], "inconclusive")
+                self.assertIn("UTC offset", issue["reason"])
+                if not metadata:
+                    self.assertIn("Repository scope is required", issue["reason"])
+
+    def test_stale_memberships_are_excluded_from_grant_paths(self):
+        self.data = load_json(self.exports / "checked-manifest.json")
+        snapshot = self.data["snapshots"][1]
+        snapshot["sources"]["team_memberships"]["captured_at"] = self.data["snapshots"][0]["captured_at"]
+        self.write_manifest()
+        scenario, _ = load_csv_exports(self.manifest)
+        observation = build_packet(scenario)["observations"][1]
+        self.assertEqual(observation["verdict"], "inconclusive")
+        self.assertEqual(observation["paths"], [])
+
+    def test_valid_direct_grant_remains_visible_with_an_invalid_source(self):
+        self.data = load_json(self.exports / "checked-manifest.json")
+        sources = self.data["snapshots"][1]["sources"]
+        sources["direct_grants"]["file"] = "direct-before.csv"
+        sources["team_memberships"]["repository"] = "other-repository"
+        self.write_manifest()
+        scenario, _ = load_csv_exports(self.manifest)
+        observation = build_packet(scenario)["observations"][1]
+        self.assertEqual(observation["verdict"], "still_granted")
+        self.assertEqual([path["kind"] for path in observation["paths"]], ["direct"])
+        self.assertEqual(observation["source_coverage"]["team_memberships"], "invalid")
+        self.assertIn("memberships-before.csv", observation["reason"])
 
     def test_columns_can_be_reordered_and_include_extra_fields(self):
         source = self.exports / "direct-before.csv"

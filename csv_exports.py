@@ -43,6 +43,11 @@ def _read_rows(stream: TextIO, path: Path, columns: tuple[str, ...]) -> list[dic
 def read_csv_exports(manifest_path: Path, *, include_provenance: bool = False) -> CsvInputs:
     """Read CSV sources and optionally record the raw bytes used for each source."""
     manifest = load_json(manifest_path)
+    version = manifest.get("manifest_version", 1)
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("CSV manifest version must be 1 or 2")
+    required_fields = {"file", "complete"}
+    allowed_fields = required_fields | {"captured_at", "repository"} if version == 2 else required_fields
     case = manifest.get("case")
     snapshots = manifest.get("snapshots")
     if not isinstance(case, dict) or not isinstance(snapshots, list):
@@ -60,9 +65,9 @@ def read_csv_exports(manifest_path: Path, *, include_provenance: bool = False) -
         for name, descriptor in snapshot["sources"].items():
             if name not in definitions:
                 raise ValueError(f"unexpected snapshot source: {name}")
-            if (not isinstance(descriptor, dict) or descriptor.keys() != {"file", "complete"}
+            if (not isinstance(descriptor, dict) or not required_fields <= descriptor.keys() <= allowed_fields
                     or type(descriptor["complete"]) is not bool):
-                raise ValueError(f"{name} needs a file path and a boolean complete flag")
+                raise ValueError(f"{name} needs a file path and a boolean complete flag for this manifest version")
             path = resolve_input_file(directory, descriptor["file"], "CSV export")
             key = (path, definitions[name])
             if key not in exports:
@@ -78,6 +83,12 @@ def read_csv_exports(manifest_path: Path, *, include_provenance: bool = False) -
                     exports[key] = _read_rows(stream, *key)
             rows = exports[key]
             sources[name] = {"complete": descriptor["complete"], "rows": rows}
+            if version == 2:
+                sources[name]["capture"] = {
+                    "file": descriptor["file"],
+                    "captured_at": descriptor.get("captured_at"),
+                    "repository": descriptor.get("repository"),
+                }
             if provenance is not None:
                 provenance[f"/snapshots/{index}/sources/{name}"] = {
                     "file": descriptor["file"],
