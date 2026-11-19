@@ -319,6 +319,7 @@
     <div class="frame">
       <div class="brand"><span class="brand-icon" aria-hidden="true"></span>Access Review Lab</div>
       <div class="header-actions"><span class="sample">Synthetic case</span>
+        <a class="evidence-download" href="viewer.html">Evidence Viewer</a>
         <a class="evidence-download" href="evidence.json" target="_blank" rel="noopener" data-packet="$evidence_payload">Evidence JSON</a></div>
     </div>
   </header>
@@ -327,7 +328,7 @@ $navigation
 $scenes
   </main>
   <script>
-    const download = document.querySelector(".evidence-download");
+    const download = document.querySelector("[data-packet]");
     if (window.location.protocol === "file:") {
       const bytes = Uint8Array.from(atob(download.dataset.packet), character => character.charCodeAt(0));
       download.href = URL.createObjectURL(new Blob([bytes], { type: "application/json" }));

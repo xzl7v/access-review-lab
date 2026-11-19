@@ -2,7 +2,7 @@
 
 Access Review Lab replays an identity and access management (IAM) offboarding review from timestamped exports. It checks whether a former employee's account still has a repository role and links each finding to the source records. The bundled case uses synthetic data.
 
-[Live demo](https://xzl7v.github.io/access-review-lab/) · [Sample scenario](scenario.json) · [Evidence packet](docs/evidence.json)
+[Live demo](https://xzl7v.github.io/access-review-lab/) · [Evidence Viewer](https://xzl7v.github.io/access-review-lab/viewer.html) · [Sample scenario](scenario.json) · [Evidence packet](docs/evidence.json)
 
 ## Quick start
 
@@ -65,6 +65,12 @@ python3 replay.py --exports examples/csv/manifest.json --provenance --verify out
 
 Verification compares the normalized review and the CSV fingerprints. Changes to ignored columns or line endings will fail verification for a version 2 packet. Use the same replay flags when generating and verifying a packet.
 
+### Inspect an evidence packet
+
+In the viewer, choose **Open evidence packet** to inspect a local version 1 or version 2 JSON file. Select a snapshot to see its verdict, grant paths, and source coverage. Select a cited record to see its source data and any CSV file, record number, and fingerprint stored in the packet.
+
+**Load sample** opens the bundled CSV review. To use the viewer offline, open [docs/viewer.html](docs/viewer.html) in your browser.
+
 ## Review a batch
 
 Run several cases and open the resulting Markdown report.
@@ -112,4 +118,4 @@ python3 -m unittest discover -s tests -v
 python3 build_demo.py --check
 ```
 
-Run `python3 build_demo.py` after changing the sample scenario or demo template. Open [docs/index.html](docs/index.html) in a browser to use the demo offline. CI runs the tests, checks the generated demo, and verifies the bundled evidence packet. [CI workflow](.github/workflows/ci.yml)
+Run `python3 build_demo.py` after changing the sample inputs or files under `web/`. Open [docs/index.html](docs/index.html) in a browser to use the demo offline. CI runs the tests, checks the generated demo and viewer, and verifies the bundled evidence packet. [CI workflow](.github/workflows/ci.yml)
