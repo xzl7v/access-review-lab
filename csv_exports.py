@@ -3,35 +3,45 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass
+from hashlib import sha256
+from io import StringIO
 from pathlib import Path
+from typing import TextIO
 
 from evidence import load_json, resolve_input_file
 from review import source_columns
 
 
-def _read_rows(path: Path, columns: tuple[str, ...]) -> list[dict[str, str]]:
+@dataclass(frozen=True)
+class CsvInputs:
+    scenario: dict
+    paths: set[Path]
+    source_provenance: dict | None
+
+
+def _read_rows(stream: TextIO, path: Path, columns: tuple[str, ...]) -> list[dict[str, str]]:
     rows = []
     try:
-        with path.open(encoding="utf-8-sig", newline="") as stream:
-            reader = csv.DictReader(stream, strict=True)
-            header = reader.fieldnames
-            if not header or "" in header or len(header) != len(set(header)):
-                raise ValueError(f"{path.name} needs a CSV header with unique column names")
-            missing = [column for column in columns if column not in header]
-            if missing:
-                raise ValueError(f"{path.name} is missing CSV columns: {', '.join(missing)}")
+        reader = csv.DictReader(stream, strict=True)
+        header = reader.fieldnames
+        if not header or "" in header or len(header) != len(set(header)):
+            raise ValueError(f"{path.name} needs a CSV header with unique column names")
+        missing = [column for column in columns if column not in header]
+        if missing:
+            raise ValueError(f"{path.name} is missing CSV columns: {', '.join(missing)}")
 
-            for row in reader:
-                if None in row or None in row.values():
-                    raise ValueError(f"{path.name}:{reader.line_num} has a different field count from the header")
-                rows.append({column: row[column] for column in columns})
+        for row in reader:
+            if None in row or None in row.values():
+                raise ValueError(f"{path.name}:{reader.line_num} has a different field count from the header")
+            rows.append({column: row[column] for column in columns})
     except csv.Error as exc:
         raise ValueError(f"{path.name} contains invalid CSV: {exc}") from exc
     return rows
 
 
-def load_csv_exports(manifest_path: Path) -> tuple[dict, set[Path]]:
-    """Load a manifest into the replay schema and return its CSV paths."""
+def read_csv_exports(manifest_path: Path, *, include_provenance: bool = False) -> CsvInputs:
+    """Read CSV sources and optionally record the raw bytes used for each source."""
     manifest = load_json(manifest_path)
     case = manifest.get("case")
     snapshots = manifest.get("snapshots")
@@ -40,8 +50,10 @@ def load_csv_exports(manifest_path: Path) -> tuple[dict, set[Path]]:
     directory = manifest_path.resolve().parent
     definitions = source_columns(case)
     exports = {}
+    file_hashes = {}
+    provenance = {} if include_provenance else None
 
-    for snapshot in snapshots:
+    for index, snapshot in enumerate(snapshots):
         if not isinstance(snapshot, dict) or not isinstance(snapshot.get("sources"), dict):
             raise ValueError("each CSV snapshot needs a sources object")
         sources = {}
@@ -54,8 +66,30 @@ def load_csv_exports(manifest_path: Path) -> tuple[dict, set[Path]]:
             path = resolve_input_file(directory, descriptor["file"], "CSV export")
             key = (path, definitions[name])
             if key not in exports:
-                exports[key] = _read_rows(*key)
-            sources[name] = {"complete": descriptor["complete"], "rows": exports[key]}
+                if include_provenance:
+                    content = path.read_bytes()
+                    fingerprint = sha256(content).hexdigest()
+                    if file_hashes.setdefault(path, fingerprint) != fingerprint:
+                        raise ValueError(f"CSV export changed during the review: {descriptor['file']}")
+                    stream = StringIO(content.decode("utf-8-sig"), newline="")
+                else:
+                    stream = path.open(encoding="utf-8-sig", newline="")
+                with stream:
+                    exports[key] = _read_rows(stream, *key)
+            rows = exports[key]
+            sources[name] = {"complete": descriptor["complete"], "rows": rows}
+            if provenance is not None:
+                provenance[f"/snapshots/{index}/sources/{name}"] = {
+                    "file": descriptor["file"],
+                    "sha256": file_hashes[path],
+                    "record_count": len(rows),
+                }
         snapshot["sources"] = sources
 
-    return manifest, {path for path, _ in exports}
+    return CsvInputs(manifest, {path for path, _ in exports}, provenance)
+
+
+def load_csv_exports(manifest_path: Path) -> tuple[dict, set[Path]]:
+    """Load a manifest into the replay schema and return its CSV paths."""
+    loaded = read_csv_exports(manifest_path)
+    return loaded.scenario, loaded.paths

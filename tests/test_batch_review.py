@@ -25,10 +25,10 @@ class BatchReviewTests(unittest.TestCase):
     def write_manifest(self, entries):
         self.manifest.write_text(json.dumps({"cases": entries}), encoding="utf-8")
 
-    def run_batch(self):
+    def run_batch(self, *options):
         return subprocess.run(
             [sys.executable, "-B", str(ROOT / "batch_review.py"),
-             str(self.manifest), "--output", str(self.output)],
+             str(self.manifest), "--output", str(self.output), *options],
             capture_output=True,
             text=True,
             check=False,
@@ -68,6 +68,22 @@ class BatchReviewTests(unittest.TestCase):
         self.assertRegex(report, r"\| AR-001 \|.*direct-grant-removed.*\| Still granted \|")
         self.assertEqual(load_json(self.output / "evidence" / "001.json"),
                          load_json(ROOT / "docs" / "evidence.json"))
+
+    def test_mixed_batch_writes_provenance_for_csv_packets(self):
+        copytree(ROOT / "examples" / "csv", self.inputs / "csv")
+        self.write_manifest([
+            {"scenario": "verified-removed.json"},
+            {"exports": "csv/manifest.json", "follow_up": "direct-grant-removed"},
+        ])
+        result = self.run_batch("--provenance")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        csv_packet = load_json(self.output / "evidence" / "001.json")
+        self.assertEqual(csv_packet["packet_version"], 2)
+        source = "/snapshots/1/sources/team_memberships"
+        self.assertEqual(csv_packet["provenance"]["sources"][source]["file"], "memberships-before.csv")
+        self.assertEqual(csv_packet["provenance"]["records"][source + "/rows/0"]["record_number"], 1)
+        json_packet = load_json(self.output / "evidence" / "002.json")
+        self.assertEqual(json_packet, build_packet(load_json(self.inputs / "verified-removed.json")))
 
     def test_multiple_follow_ups_require_a_valid_selection(self):
         copytree(ROOT / "examples" / "csv", self.inputs / "csv")
