@@ -10,6 +10,7 @@ from html import escape
 from pathlib import Path
 from string import Template
 
+from batch_review import build_batch_packet, load_batch
 from csv_exports import read_csv_exports
 from evidence import build_packet, load_json, pretty_json, write_atomic
 
@@ -247,10 +248,12 @@ def render_demo(packet: dict, layout: Template) -> str:
 def render_viewer() -> str:
     sample = read_csv_exports(ROOT / "examples" / "csv" / "manifest.json", include_provenance=True)
     packet = build_packet(sample.scenario, source_provenance=sample.source_provenance)
+    batch = build_batch_packet(load_batch(ROOT / "examples" / "batch" / "manifest.json"))
     script = (ROOT / "web" / "viewer.js").read_text(encoding="utf-8")
     layout = Template((ROOT / "web" / "viewer.html").read_text(encoding="utf-8"))
     return layout.substitute(
         evidence_payload=b64encode(pretty_json(packet).encode("utf-8")).decode("ascii"),
+        batch_payload=b64encode(pretty_json(batch).encode("utf-8")).decode("ascii"),
         script_hash=b64encode(sha256(script.encode("utf-8")).digest()).decode("ascii"),
         viewer_script=script,
     )

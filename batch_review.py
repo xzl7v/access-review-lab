@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from csv_exports import read_csv_exports
 from evidence import build_packet, load_json, pretty_json, resolve_input_file
 
+BATCH_VERSION = 1
 VERDICTS = {
     "still_granted": (0, "Still granted"),
     "inconclusive": (1, "Needs evidence"),
@@ -103,6 +104,17 @@ def _render_report(reviews: list[tuple[dict, dict]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_batch_packet(reviews: list[tuple[dict, dict]]) -> dict:
+    """Bundle the selected follow-ups and their evidence for the browser."""
+    return {
+        "batch_version": BATCH_VERSION,
+        "reviews": [
+            {"follow_up": observation["snapshot"], "packet": packet}
+            for packet, observation in reviews
+        ],
+    }
+
+
 def write_batch(manifest_path: Path, output: Path, *, include_provenance: bool = False) -> Path:
     """Publish one complete report directory from a validated batch."""
     output = output.absolute()
@@ -118,6 +130,7 @@ def write_batch(manifest_path: Path, output: Path, *, include_provenance: bool =
         for index, (packet, _) in enumerate(reviews, start=1):
             (evidence / f"{index:03d}.json").write_text(pretty_json(packet), encoding="utf-8", newline="\n")
         (bundle / "report.md").write_text(_render_report(reviews), encoding="utf-8", newline="\n")
+        (bundle / "batch.json").write_text(pretty_json(build_batch_packet(reviews)), encoding="utf-8", newline="\n")
         bundle.rename(output)
     return output / "report.md"
 

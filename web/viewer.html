@@ -28,7 +28,7 @@
     h1, h2, h3, p, dl, dd, pre { margin: 0; }
     code, pre, time { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; }
     a { color: var(--mint); text-underline-offset: 4px; }
-    :is(a, button):focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+    :is(a, button, select, .batch-scroll):focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
     .frame { width: min(1240px, calc(100% - 48px)); margin-inline: auto; }
     .masthead { border-bottom: 1px solid var(--border); }
     .masthead .frame { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; }
@@ -55,6 +55,28 @@
     .load-status { margin-block: 15px 18px; color: var(--muted); overflow-wrap: anywhere; font-size: .9rem; }
     .load-error { margin-block: 0 18px; padding: 10px 12px; border: 1px solid #785047; border-radius: 8px; color: var(--red); }
     .panel { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+    .batch-panel { margin-bottom: 16px; }
+    .batch-header { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .batch-header h2 { font-size: 1.2rem; }
+    .batch-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .9rem; }
+    .batch-filter select {
+      color: inherit;
+      font: inherit;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      min-height: 36px;
+    }
+    .batch-count { color: var(--muted); font-size: .875rem; margin-top: 6px; }
+    .batch-scroll { overflow-x: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 6px; }
+    .batch-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; font-size: .9rem; }
+    .batch-table th, .batch-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+    .batch-table th { color: var(--muted); font-weight: 650; background: var(--canvas); }
+    .batch-table tr:last-child td { border-bottom: 0; }
+    .batch-case { min-height: 34px; padding: 4px 8px; }
+    .batch-case[aria-pressed="true"] { color: var(--mint); background: #16302e; border-color: var(--mint); }
+    .batch-empty { margin-top: 12px; }
     .case-strip { margin-bottom: 16px; }
     .case-strip h2 { font-size: 1.13rem; overflow-wrap: anywhere; }
     .case-fields { display: flex; flex-wrap: wrap; gap: 9px 26px; margin-top: 10px; }
@@ -100,6 +122,9 @@
     }
     @media (max-width: 690px) {
       .frame { width: calc(100% - 28px); }
+      .batch-table { min-width: 0; }
+      .batch-table .batch-detail { display: none; }
+      .batch-table th, .batch-table td { padding: 7px 8px; }
       .inspection { grid-template-columns: minmax(0, 1fr); gap: 12px; }
       #record-pane { grid-column: auto; }
       .snapshot-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -121,17 +146,47 @@
     <div class="intro">
       <div>
         <h1>Evidence Viewer</h1>
-        <p>Inspect a review packet from this device.</p>
+        <p>Inspect an evidence packet or a batch report from this device.</p>
       </div>
       <div class="actions">
-        <button class="primary" type="button" id="open-packet">Open evidence packet</button>
+        <button class="primary" type="button" id="open-packet">Open JSON file</button>
         <button type="button" id="load-sample">Load sample</button>
-        <input type="file" id="packet-file" aria-label="Evidence packet" accept=".json,application/json" hidden>
+        <button type="button" id="load-batch-sample">Load sample batch</button>
+        <input type="file" id="packet-file" aria-label="Evidence or batch file" accept=".json,application/json" hidden>
       </div>
     </div>
     <p class="load-status" id="load-status" role="status"></p>
     <p class="load-error" id="load-error" role="alert" hidden></p>
-    <noscript>Enable JavaScript to open evidence packets.</noscript>
+    <noscript>Enable JavaScript to open evidence packets and batch reports.</noscript>
+    <section class="panel batch-panel" id="batch-view" aria-labelledby="batch-title" hidden>
+      <div class="batch-header">
+        <div>
+          <h2 id="batch-title">Batch reviews</h2>
+          <p class="batch-count" id="batch-count" role="status"></p>
+        </div>
+        <label class="batch-filter">Outcome
+          <select id="batch-filter">
+            <option value="all">All outcomes</option>
+            <option value="still_granted">Still granted</option>
+            <option value="inconclusive">Needs evidence</option>
+            <option value="verified_removed">Verified removed</option>
+          </select>
+        </label>
+      </div>
+      <div class="batch-scroll" id="batch-table" role="region" aria-label="Batch review results" tabindex="0">
+        <table class="batch-table">
+          <thead><tr>
+            <th scope="col">Case</th>
+            <th scope="col" class="batch-detail">Account</th>
+            <th scope="col">Repository</th>
+            <th scope="col" class="batch-detail">Role</th>
+            <th scope="col">Outcome</th>
+          </tr></thead>
+          <tbody id="batch-rows"></tbody>
+        </table>
+      </div>
+      <p class="quiet batch-empty" id="batch-empty" hidden>No cases match this outcome.</p>
+    </section>
     <div id="packet-view" hidden>
       <section class="panel case-strip" aria-labelledby="case-title">
         <h2 id="case-title"></h2>
@@ -164,6 +219,7 @@
     </div>
   </main>
   <script type="text/plain" id="sample-packet">$evidence_payload</script>
+  <script type="text/plain" id="sample-batch">$batch_payload</script>
   <script>$viewer_script</script>
 </body>
 </html>

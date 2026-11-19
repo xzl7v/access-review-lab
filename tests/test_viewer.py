@@ -20,6 +20,21 @@ class ViewerAssetsTests(unittest.TestCase):
         self.assertEqual(packet["provenance"]["sources"][record["source_ref"]]["file"],
                          "memberships-before.csv")
 
+    def test_viewer_embeds_the_ordered_sample_batch(self):
+        page = render_viewer()
+        encoded = re.search(r'<script type="text/plain" id="sample-batch">([A-Za-z0-9+/=]+)</script>', page)
+        self.assertIsNotNone(encoded)
+        batch = json.loads(b64decode(encoded.group(1)))
+        self.assertEqual(batch["batch_version"], 1)
+        reviews = batch["reviews"]
+        self.assertEqual([review["packet"]["case"]["id"] for review in reviews], ["AR-101", "AR-102", "AR-103"])
+        selected = [
+            next(observation["verdict"] for observation in review["packet"]["observations"]
+                 if observation["snapshot"] == review["follow_up"])
+            for review in reviews
+        ]
+        self.assertEqual(selected, ["still_granted", "inconclusive", "verified_removed"])
+
     def test_security_policy_matches_the_script_in_the_page(self):
         page = render_viewer()
         script = re.search(r"<script>([\s\S]+?)</script>", page)

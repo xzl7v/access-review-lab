@@ -39,6 +39,9 @@ class BatchReviewTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         report = (self.output / "report.md").read_text(encoding="utf-8")
         self.assertIn("3 cases. 1 still granted, 1 needs evidence, 1 verified removed.", report)
+        batch = load_json(self.output / "batch.json")
+        self.assertEqual(batch["batch_version"], 1)
+        self.assertEqual(len(batch["reviews"]), 3)
         rows = [line for line in report.splitlines() if line.startswith("| AR-")]
         self.assertEqual(len(rows), 3)
         expected = (
@@ -46,13 +49,14 @@ class BatchReviewTests(unittest.TestCase):
             ("AR-102", "Needs evidence", "needs-evidence.json"),
             ("AR-103", "Verified removed", "verified-removed.json"),
         )
-        for row, (case_id, verdict, example) in zip(rows, expected):
+        for row, (case_id, verdict, example), review in zip(rows, expected, batch["reviews"]):
             self.assertIn(f"| {case_id} |", row)
             self.assertIn(f"| {verdict} |", row)
             link = re.search(r"\[Packet\]\((evidence/\d+\.json)\)", row)
             self.assertIsNotNone(link)
             packet = load_json(self.output / link.group(1))
             self.assertEqual(packet, build_packet(load_json(self.inputs / example)))
+            self.assertEqual(review, {"follow_up": packet["observations"][1]["snapshot"], "packet": packet})
         self.assertIn("Team grant via release-engineering", rows[0])
         self.assertIn("membership-export-missing", rows[1])
 
@@ -79,6 +83,9 @@ class BatchReviewTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         csv_packet = load_json(self.output / "evidence" / "001.json")
         self.assertEqual(csv_packet["packet_version"], 2)
+        browser_file = load_json(self.output / "batch.json")
+        self.assertEqual(browser_file["reviews"][0],
+                         {"follow_up": "direct-grant-removed", "packet": csv_packet})
         source = "/snapshots/1/sources/team_memberships"
         self.assertEqual(csv_packet["provenance"]["sources"][source]["file"], "memberships-before.csv")
         self.assertEqual(csv_packet["provenance"]["records"][source + "/rows/0"]["record_number"], 1)

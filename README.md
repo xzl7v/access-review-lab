@@ -67,7 +67,7 @@ Verification compares the normalized review and the CSV fingerprints. Changes to
 
 ### Inspect an evidence packet
 
-In the viewer, choose **Open evidence packet** to inspect a local version 1 or version 2 JSON file. Select a snapshot to see its verdict, grant paths, and source coverage. Select a cited record to see its source data and any CSV file, record number, and fingerprint stored in the packet.
+In the viewer, choose **Open JSON file** to inspect a local version 1 or version 2 evidence packet. Select a snapshot to see its verdict, grant paths, and source coverage. Select a cited record to see its source data and any CSV file, record number, and fingerprint stored in the packet.
 
 **Load sample** opens the bundled CSV review. To use the viewer offline, open [docs/viewer.html](docs/viewer.html) in your browser.
 
@@ -81,11 +81,13 @@ python3 batch_review.py examples/batch/manifest.json --output output/batch
 
 `output/batch/report.md` lists cases with remaining access first, then cases that need evidence, then verified removals. Each row identifies the reviewed follow-up, explains the result, and links to its evidence packet.
 
+Open `output/batch/batch.json` in the Evidence Viewer to filter cases by outcome. Selecting a case opens its recorded follow-up and evidence in the same page. [Open the sample batch](https://xzl7v.github.io/access-review-lab/viewer.html#batch)
+
 Use `scenario` for a JSON case or `exports` for a CSV manifest. Input paths are relative to the batch manifest, and case IDs must be unique. Each case needs a follow-up snapshot. When a case has several, set `follow_up` to the snapshot ID the report should use. [Example batch manifest](examples/batch/manifest.json)
 
 Add `--provenance` to include file hashes and record numbers in the packets for CSV cases.
 
-Choose a new output directory for each run. The batch validates every case before publishing the report and packets together.
+Choose a new output directory for each run. The batch validates every case before publishing the report, browser file, and evidence packets together.
 
 ## Evidence model
 
