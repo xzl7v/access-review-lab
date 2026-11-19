@@ -5,25 +5,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from evidence import load_json
+from evidence import load_json, resolve_input_file
 from review import source_columns
-
-
-def _export_path(directory: Path, reference: object) -> Path:
-    if not isinstance(reference, str) or not reference.strip():
-        raise ValueError("a CSV export needs a file path")
-    relative_path = Path(reference)
-    if relative_path.anchor or ".." in relative_path.parts:
-        raise ValueError(f"CSV export path must stay inside the manifest directory: {reference}")
-    try:
-        path = (directory / relative_path).resolve()
-    except RuntimeError as exc:
-        raise ValueError(f"cannot resolve CSV export path: {reference}") from exc
-    if not path.is_relative_to(directory):
-        raise ValueError(f"CSV export path must stay inside the manifest directory: {reference}")
-    if not path.is_file():
-        raise FileNotFoundError(f"CSV export is unavailable: {reference}")
-    return path
 
 
 def _read_rows(path: Path, columns: tuple[str, ...]) -> list[dict[str, str]]:
@@ -68,7 +51,7 @@ def load_csv_exports(manifest_path: Path) -> tuple[dict, set[Path]]:
             if (not isinstance(descriptor, dict) or descriptor.keys() != {"file", "complete"}
                     or type(descriptor["complete"]) is not bool):
                 raise ValueError(f"{name} needs a file path and a boolean complete flag")
-            path = _export_path(directory, descriptor["file"])
+            path = resolve_input_file(directory, descriptor["file"], "CSV export")
             key = (path, definitions[name])
             if key not in exports:
                 exports[key] = _read_rows(*key)

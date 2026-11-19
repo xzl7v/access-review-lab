@@ -14,6 +14,24 @@ from review import replay
 PACKET_VERSION = 1
 
 
+def resolve_input_file(directory: Path, reference: object, label: str) -> Path:
+    """Resolve a manifest entry to a regular file inside its directory."""
+    if not isinstance(reference, str) or not reference.strip():
+        raise ValueError(f"{label} needs a file path")
+    relative_path = Path(reference)
+    if relative_path.anchor or ".." in relative_path.parts:
+        raise ValueError(f"{label} path must stay inside the manifest directory: {reference}")
+    try:
+        path = (directory / relative_path).resolve()
+    except RuntimeError as exc:
+        raise ValueError(f"cannot resolve {label} path: {reference}") from exc
+    if not path.is_relative_to(directory):
+        raise ValueError(f"{label} path must stay inside the manifest directory: {reference}")
+    if not path.is_file():
+        raise FileNotFoundError(f"{label} is unavailable: {reference}")
+    return path
+
+
 def load_json(path: Path) -> dict:
     def unique_keys(pairs):
         value = {}
