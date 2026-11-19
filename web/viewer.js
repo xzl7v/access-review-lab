@@ -6,6 +6,7 @@ const verdicts = {
   verified_removed: "Verified removed",
   inconclusive: "Needs evidence",
 };
+const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 };
 const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing" };
 const sourceLabels = {
   direct_grants: ["Direct grant", "Direct grants"],
@@ -22,13 +23,15 @@ function requirePacket(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function parsePacket(text) {
-  let packet;
+function parseJson(text) {
   try {
-    packet = JSON.parse(text.replace(/^\uFEFF/, ""));
+    return JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch {
     throw new Error("The selected file does not contain valid JSON.");
   }
+}
+
+function validatePacket(packet) {
   requirePacket(isObject(packet) && [1, 2].includes(packet.packet_version),
     "Choose an Access Review Lab evidence packet in version 1 or 2.");
   const { case: review, evidence, observations } = packet;
@@ -83,6 +86,24 @@ function parsePacket(text) {
     }
   }
   return packet;
+}
+
+function validateBatch(batch) {
+  requirePacket(batch.batch_version === 1 && Array.isArray(batch.reviews) && batch.reviews.length > 0,
+    "Choose a version 1 batch file containing at least one review.");
+  const seen = new Set();
+  const reviews = batch.reviews.map(entry => {
+    requirePacket(isObject(entry) && hasText(entry.follow_up), "A batch review is missing its follow-up.");
+    const packet = validatePacket(entry.packet);
+    const matches = packet.observations.filter(observation => observation.snapshot === entry.follow_up);
+    const index = packet.observations.indexOf(matches[0]);
+    requirePacket(matches.length === 1 && index > 0 && Object.hasOwn(batchPriority, matches[0].verdict),
+      "A batch review has an invalid follow-up snapshot.");
+    requirePacket(!seen.has(packet.case.id), "A batch file contains a duplicate case ID.");
+    seen.add(packet.case.id);
+    return { packet, index, verdict: matches[0].verdict };
+  });
+  return reviews.sort((left, right) => batchPriority[left.verdict] - batchPriority[right.verdict]);
 }
 
 function element(tag, text = "", className = "") {
@@ -204,7 +225,7 @@ function showObservation(packet, observation) {
   first();
 }
 
-function renderPacket(packet, name) {
+function renderPacket(packet, selectedIndex) {
   byId("case-title").textContent = "Case " + packet.case.id;
   renderFields(byId("case-fields"), [
     ["Account", packet.case.account_id],
@@ -228,10 +249,82 @@ function renderPacket(packet, name) {
     showObservation(packet, packet.observations[index]);
   }
   options.replaceChildren(...buttons);
-  const stillGranted = packet.observations.findIndex(observation => observation.verdict === "still_granted");
-  selectSnapshot(Math.max(stillGranted, 0));
+  selectSnapshot(selectedIndex ?? Math.max(
+    packet.observations.findIndex(observation => observation.verdict === "still_granted"), 0,
+  ));
   byId("packet-view").hidden = false;
-  byId("load-status").textContent = name + " · Packet v" + packet.packet_version;
+}
+
+function renderBatch(reviews) {
+  const filter = byId("batch-filter");
+  const rows = byId("batch-rows");
+  const buttons = new Map();
+  let selected = reviews[0];
+
+  function selectReview(review) {
+    selected = review;
+    for (const [entry, button] of buttons) {
+      button.setAttribute("aria-pressed", String(entry === review));
+    }
+    renderPacket(review.packet, review.index);
+  }
+
+  function showMatchingReviews() {
+    const matches = reviews.filter(review => filter.value === "all" || review.verdict === filter.value);
+    const hasResults = matches.length > 0;
+    rows.replaceChildren();
+    buttons.clear();
+    for (const review of matches) {
+      const { id, account_id: account, repository, role } = review.packet.case;
+      const button = element("button", id, "batch-case");
+      button.type = "button";
+      button.setAttribute("aria-controls", "packet-view");
+      button.addEventListener("click", () => {
+        selectReview(review);
+        byId("case-title").scrollIntoView({ block: "nearest" });
+      });
+      buttons.set(review, button);
+      const caseCell = element("td");
+      caseCell.append(button);
+      const outcome = element("span", verdicts[review.verdict], "result");
+      outcome.dataset.verdict = review.verdict;
+      const resultCell = element("td");
+      resultCell.append(outcome);
+      const row = element("tr");
+      row.append(caseCell, element("td", account, "batch-detail"), element("td", repository),
+        element("td", role, "batch-detail"), resultCell);
+      rows.append(row);
+    }
+    byId("batch-count").textContent = "Showing " + matches.length + " of " + reviews.length
+      + (reviews.length === 1 ? " case" : " cases");
+    byId("batch-table").hidden = !hasResults;
+    byId("batch-empty").hidden = hasResults;
+    if (hasResults) selectReview(matches.includes(selected) ? selected : matches[0]);
+    else byId("packet-view").hidden = true;
+  }
+
+  filter.value = "all";
+  filter.onchange = showMatchingReviews;
+  byId("batch-view").hidden = false;
+  showMatchingReviews();
+}
+
+function openDocument(text, name) {
+  const payload = parseJson(text);
+  let status;
+  if (isObject(payload) && Object.hasOwn(payload, "batch_version")) {
+    const reviews = validateBatch(payload);
+    renderBatch(reviews);
+    status = "Batch v" + payload.batch_version;
+  } else {
+    const packet = validatePacket(payload);
+    byId("batch-view").hidden = true;
+    byId("batch-filter").onchange = null;
+    byId("batch-rows").replaceChildren();
+    renderPacket(packet);
+    status = "Packet v" + packet.packet_version;
+  }
+  byId("load-status").textContent = name + " · " + status;
   byId("load-error").hidden = true;
 }
 
@@ -251,22 +344,26 @@ picker.addEventListener("change", async () => {
   const selected = ++request;
   try {
     const text = await file.text();
-    if (selected === request) renderPacket(parsePacket(text), file.name);
+    if (selected === request) openDocument(text, file.name);
   } catch (error) {
     if (selected === request) displayError(error);
   }
 });
 
-function loadSample() {
+function loadSample(id, name) {
   request++;
   try {
-    const encoded = byId("sample-packet").textContent.trim();
+    const encoded = byId(id).textContent.trim();
     const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
-    renderPacket(parsePacket(new TextDecoder().decode(bytes)), "Sample packet");
+    openDocument(new TextDecoder().decode(bytes), name);
   } catch (error) {
     displayError(error);
   }
 }
 
-byId("load-sample").addEventListener("click", loadSample);
-loadSample();
+const loadSampleReview = () => loadSample("sample-packet", "Sample packet");
+const loadSampleBatch = () => loadSample("sample-batch", "Sample batch");
+byId("load-sample").addEventListener("click", loadSampleReview);
+byId("load-batch-sample").addEventListener("click", loadSampleBatch);
+if (window.location.hash === "#batch") loadSampleBatch();
+else loadSampleReview();
