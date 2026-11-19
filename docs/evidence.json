@@ -1,0 +1,254 @@
+{
+  "packet_version": 1,
+  "input_sha256": "18bf1856b6dc39a15a27e12ca917464208ecfae9a1b2cd51970087ff4c65199f",
+  "case": {
+    "id": "AR-001",
+    "employee_id": "E-102",
+    "employee_end_at": "2026-10-31T18:00:00+03:00",
+    "account_id": "A-202",
+    "repository": "release-runbooks",
+    "role": "Admin",
+    "decision": {
+      "reviewer": "demo-reviewer",
+      "action": "revoke_role",
+      "recorded_at": "2026-11-19T09:05:00+03:00",
+      "reason": "Close the former employee's administrative grant on the repository."
+    }
+  },
+  "observations": [
+    {
+      "snapshot": "before-decision",
+      "captured_at": "2026-11-19T09:00:00+03:00",
+      "verdict": "detected",
+      "paths": [
+        {
+          "kind": "direct",
+          "evidence": [
+            "/snapshots/0/sources/direct_grants/rows/0"
+          ]
+        },
+        {
+          "kind": "team",
+          "team_id": "release-engineering",
+          "evidence": [
+            "/snapshots/0/sources/team_memberships/rows/0",
+            "/snapshots/0/sources/team_grants/rows/0"
+          ]
+        }
+      ],
+      "incomplete_sources": [],
+      "source_coverage": {
+        "direct_grants": "complete",
+        "team_memberships": "complete",
+        "team_grants": "complete"
+      },
+      "snapshot_ref": "/snapshots/0",
+      "reason": "Grant paths are present after departure."
+    },
+    {
+      "snapshot": "direct-grant-removed",
+      "captured_at": "2026-11-19T09:15:00+03:00",
+      "verdict": "still_granted",
+      "paths": [
+        {
+          "kind": "team",
+          "team_id": "release-engineering",
+          "evidence": [
+            "/snapshots/1/sources/team_memberships/rows/0",
+            "/snapshots/1/sources/team_grants/rows/0"
+          ]
+        }
+      ],
+      "incomplete_sources": [],
+      "source_coverage": {
+        "direct_grants": "complete",
+        "team_memberships": "complete",
+        "team_grants": "complete"
+      },
+      "snapshot_ref": "/snapshots/1",
+      "reason": "A grant path is visible in the follow-up."
+    },
+    {
+      "snapshot": "both-paths-removed",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "verdict": "verified_removed",
+      "paths": [],
+      "incomplete_sources": [],
+      "source_coverage": {
+        "direct_grants": "complete",
+        "team_memberships": "complete",
+        "team_grants": "complete"
+      },
+      "snapshot_ref": "/snapshots/2",
+      "reason": "The complete follow-up shows zero grant paths in the modeled repository."
+    },
+    {
+      "snapshot": "membership-export-missing",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "verdict": "inconclusive",
+      "paths": [],
+      "incomplete_sources": [
+        "team_memberships"
+      ],
+      "source_coverage": {
+        "direct_grants": "complete",
+        "team_memberships": "missing",
+        "team_grants": "complete"
+      },
+      "snapshot_ref": "/snapshots/3",
+      "reason": "Sources required for verification: team_memberships."
+    }
+  ],
+  "evidence": {
+    "/case/decision": {
+      "reviewer": "demo-reviewer",
+      "action": "revoke_role",
+      "recorded_at": "2026-11-19T09:05:00+03:00",
+      "reason": "Close the former employee's administrative grant on the repository."
+    },
+    "/snapshots/0": {
+      "id": "before-decision",
+      "stage": "baseline",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:00:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-202",
+              "repository": "release-runbooks",
+              "role": "Admin"
+            }
+          ]
+        },
+        "team_memberships": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-202",
+              "team_id": "release-engineering"
+            }
+          ]
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "release-runbooks",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    },
+    "/snapshots/0/sources/direct_grants/rows/0": {
+      "account_id": "A-202",
+      "repository": "release-runbooks",
+      "role": "Admin"
+    },
+    "/snapshots/0/sources/team_grants/rows/0": {
+      "team_id": "release-engineering",
+      "repository": "release-runbooks",
+      "role": "Admin"
+    },
+    "/snapshots/0/sources/team_memberships/rows/0": {
+      "account_id": "A-202",
+      "team_id": "release-engineering"
+    },
+    "/snapshots/1": {
+      "id": "direct-grant-removed",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:15:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": []
+        },
+        "team_memberships": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-202",
+              "team_id": "release-engineering"
+            }
+          ]
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "release-runbooks",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    },
+    "/snapshots/1/sources/team_grants/rows/0": {
+      "team_id": "release-engineering",
+      "repository": "release-runbooks",
+      "role": "Admin"
+    },
+    "/snapshots/1/sources/team_memberships/rows/0": {
+      "account_id": "A-202",
+      "team_id": "release-engineering"
+    },
+    "/snapshots/2": {
+      "id": "both-paths-removed",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": []
+        },
+        "team_memberships": {
+          "complete": true,
+          "rows": [
+            {
+              "account_id": "A-207",
+              "team_id": "release-engineering"
+            }
+          ]
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "release-runbooks",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    },
+    "/snapshots/3": {
+      "id": "membership-export-missing",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "complete": true,
+          "rows": []
+        },
+        "team_grants": {
+          "complete": true,
+          "rows": [
+            {
+              "team_id": "release-engineering",
+              "repository": "release-runbooks",
+              "role": "Admin"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
