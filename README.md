@@ -52,6 +52,27 @@ Evidence pointers use zero-based snapshot and data record indexes. The manifest 
 
 Use a header-only file with `complete: true` to record an empty export. Set `complete: false` for partial data and omit a source when its export is unavailable. A missing or malformed file named in the manifest stops the replay.
 
+### Validate export captures
+
+Set `"manifest_version": 2` at the top of a CSV manifest. For every supplied export, record its capture time and repository scope in the source entry.
+
+```json
+{
+  "file": "memberships-after.csv",
+  "complete": true,
+  "captured_at": "2026-11-19T09:25:00+03:00",
+  "repository": "release-runbooks"
+}
+```
+
+The export must match the snapshot's repository and capture instant. Timestamps include a UTC offset, and equivalent offsets are accepted. Missing, invalid, or mismatched capture metadata marks the source `Invalid` and excludes its rows from the evidence used to evaluate access. A removal needs complete coverage from accepted sources. The report identifies the invalid export and the reason. Version 1 manifests retain their original replay rules.
+
+```sh
+python3 replay.py --exports examples/csv/checked-manifest.json --provenance
+```
+
+The sample covers an accepted follow-up, a stale membership export, and an export scoped to a different repository. [Checked CSV manifest](examples/csv/checked-manifest.json)
+
 ### Trace CSV evidence
 
 Use `--provenance` to generate a version 2 packet and verify it against the CSV exports.

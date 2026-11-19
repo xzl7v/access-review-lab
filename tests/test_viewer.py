@@ -19,6 +19,12 @@ class ViewerAssetsTests(unittest.TestCase):
         self.assertEqual(record["record_number"], 1)
         self.assertEqual(packet["provenance"]["sources"][record["source_ref"]]["file"],
                          "memberships-before.csv")
+        observations = {item["snapshot"]: item for item in packet["observations"]}
+        self.assertEqual(observations["both-paths-removed"]["verdict"], "verified_removed")
+        for name in ("stale-membership-export", "wrong-repository-export"):
+            with self.subTest(snapshot=name):
+                self.assertEqual(observations[name]["verdict"], "inconclusive")
+                self.assertEqual(observations[name]["source_coverage"]["team_memberships"], "invalid")
 
     def test_viewer_embeds_the_ordered_sample_batch(self):
         page = render_viewer()

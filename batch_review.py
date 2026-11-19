@@ -95,6 +95,8 @@ def _render_report(reviews: list[tuple[dict, dict]]) -> str:
                 for path in observation["paths"]
             )
             reason = ", ".join(dict.fromkeys(paths))
+            if observation.get("source_issues"):
+                reason += ". " + observation["reason"]
         follow_up = f"{observation['snapshot']} ({observation['captured_at']})"
         fields = (case["id"], case["account_id"], case["repository"], case["role"],
                   follow_up, VERDICTS[verdict][1], reason)
