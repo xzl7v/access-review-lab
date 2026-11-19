@@ -1,0 +1,94 @@
+{
+  "case": {
+    "id": "AR-001",
+    "employee_id": "E-102",
+    "employee_end_at": "2026-10-31T18:00:00+03:00",
+    "account_id": "A-202",
+    "repository": "release-runbooks",
+    "role": "Admin",
+    "decision": {
+      "reviewer": "demo-reviewer",
+      "action": "revoke_role",
+      "recorded_at": "2026-11-19T09:05:00+03:00",
+      "reason": "Close the former employee's administrative grant on the repository."
+    }
+  },
+  "snapshots": [
+    {
+      "id": "before-decision",
+      "stage": "baseline",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:00:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "file": "direct-before.csv",
+          "complete": true
+        },
+        "team_memberships": {
+          "file": "memberships-before.csv",
+          "complete": true
+        },
+        "team_grants": {
+          "file": "team-grants.csv",
+          "complete": true
+        }
+      }
+    },
+    {
+      "id": "direct-grant-removed",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:15:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "file": "direct-after.csv",
+          "complete": true
+        },
+        "team_memberships": {
+          "file": "memberships-before.csv",
+          "complete": true
+        },
+        "team_grants": {
+          "file": "team-grants.csv",
+          "complete": true
+        }
+      }
+    },
+    {
+      "id": "both-paths-removed",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "file": "direct-after.csv",
+          "complete": true
+        },
+        "team_memberships": {
+          "file": "memberships-after.csv",
+          "complete": true
+        },
+        "team_grants": {
+          "file": "team-grants.csv",
+          "complete": true
+        }
+      }
+    },
+    {
+      "id": "membership-export-missing",
+      "stage": "follow_up",
+      "repository": "release-runbooks",
+      "captured_at": "2026-11-19T09:25:00+03:00",
+      "sources": {
+        "direct_grants": {
+          "file": "direct-after.csv",
+          "complete": true
+        },
+        "team_grants": {
+          "file": "team-grants.csv",
+          "complete": true
+        }
+      }
+    }
+  ]
+}

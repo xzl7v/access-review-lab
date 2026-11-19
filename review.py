@@ -30,7 +30,8 @@ def _timestamp(value: str, field: str) -> datetime:
     return parsed
 
 
-def _source_definitions(case: dict) -> dict:
+def source_columns(case: dict) -> dict[str, tuple[str, ...]]:
+    """Return the evidence sources and columns required by the case."""
     model = case.get("team_model", "flat")
     if model == "flat":
         return REQUIRED_SOURCES
@@ -141,7 +142,7 @@ def assess(case: dict, snapshot: dict, index: int) -> dict:
     if stage == "baseline" and not (_timestamp(case["employee_end_at"], "employee_end_at") <= capture < decision):
         return {**result, "reason": "The baseline must fall between departure and the decision."}
 
-    evidence, coverage = _collect_sources(snapshot, index, _source_definitions(case))
+    evidence, coverage = _collect_sources(snapshot, index, source_columns(case))
     paths = _grant_paths(case, evidence)
     incomplete = [name for name, state in coverage.items() if state != "complete"]
     result.update(paths=paths, incomplete_sources=incomplete, source_coverage=coverage)
@@ -165,7 +166,7 @@ def replay(scenario: dict) -> dict:
     case = scenario["case"]
     for field in ("id", "account_id", "employee_id", "repository", "role"):
         _text(case.get(field), f"case.{field}")
-    _source_definitions(case)
+    source_columns(case)
     decision = case["decision"]
     if decision["action"] != "revoke_role":
         raise ValueError("the replay expects a revoke_role decision")

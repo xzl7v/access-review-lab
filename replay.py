@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 import sqlite3
 
+from csv_exports import load_csv_exports
 from evidence import build_packet, canonical_json, load_json, pretty_json, write_atomic
 from ledger import record_review
 from review import assess, replay
@@ -15,7 +16,9 @@ __all__ = ["assess", "replay"]
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", type=Path, default=Path(__file__).with_name("scenario.json"))
+    input_options = parser.add_mutually_exclusive_group()
+    input_options.add_argument("--scenario", type=Path, help="Read a scenario JSON file.")
+    input_options.add_argument("--exports", type=Path, help="Read a manifest of local CSV exports.")
     parser.add_argument("--json", action="store_true", help="Print the evidence packet as JSON.")
     parser.add_argument("--output", type=Path, help="Write the evidence packet to a JSON file.")
     parser.add_argument("--verify", type=Path, help="Verify an evidence packet against the scenario.")
@@ -23,10 +26,16 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        paths = [path.resolve() for path in (args.scenario, args.output, args.verify, args.ledger) if path is not None]
+        input_path = args.scenario or args.exports or Path(__file__).with_name("scenario.json")
+        paths = [path.resolve() for path in (input_path, args.output, args.verify, args.ledger) if path is not None]
         if len(paths) != len(set(paths)):
-            raise ValueError("scenario, output, verification packet, and ledger need distinct paths")
-        scenario = load_json(args.scenario)
+            raise ValueError("input, output, verification packet, and ledger need distinct paths")
+        if args.exports is not None:
+            scenario, csv_paths = load_csv_exports(input_path)
+            if csv_paths.intersection(paths):
+                raise ValueError("CSV exports, output, verification packet, and ledger need distinct paths")
+        else:
+            scenario = load_json(input_path)
         packet = build_packet(scenario)
         content = pretty_json(packet)
         if args.verify:

@@ -30,6 +30,28 @@ Case `AR-001` tracks the `Admin` role for account `A-202` on `release-runbooks`.
 
 ![Remaining team grant after the direct grant was removed](docs/assets/team-grant.png)
 
+## Import CSV exports
+
+Use `--exports` to replay dated CSV files. The example produces the same evidence packet as the JSON scenario.
+
+```sh
+python3 replay.py --exports examples/csv/manifest.json --verify docs/evidence.json
+```
+
+The manifest uses the same case, snapshot timestamps, and source names as the JSON scenario. Each source entry supplies a file relative to the manifest and a coverage flag. [Example manifest](examples/csv/manifest.json)
+
+```json
+{
+  "team_memberships": {"file": "memberships-before.csv", "complete": true}
+}
+```
+
+Each UTF-8 CSV starts with a header. The importer matches the required columns by name and ignores extra columns. The input hash covers the normalized scenario. [Required columns](#evidence-model)
+
+Evidence pointers use zero-based snapshot and data record indexes. The manifest maps each snapshot source to its CSV file.
+
+Use a header-only file with `complete: true` to record an empty export. Set `complete: false` for partial data and omit a source when its export is unavailable. A missing or malformed file named in the manifest stops the replay.
+
 ## Evidence model
 
 The baseline must show the scoped grant at or after departure and before the recorded revocation decision. Follow-up snapshots must cover the same repository and occur after that decision.
