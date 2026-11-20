@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"scenario": "batch/still-granted.json"},
+    {"scenario": "batch/needs-evidence.json"},
+    {"scenario": "batch/verified-removed.json"},
+    {"exports": "csv/checked-manifest.json", "follow_up": "stale-membership-export"},
+    {"github": "github/manifest.json", "follow_up": "role-reduced"}
+  ]
+}

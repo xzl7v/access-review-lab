@@ -5,226 +5,274 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'sha256-$script_hash'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-  <title>Evidence Viewer | Access Review Lab</title>
+  <title>Access Review Lab | Access Reviews</title>
   <style>
     :root {
-      color-scheme: dark;
-      color: #edf4f8;
-      background: #0b1219;
-      --canvas: #0b1219;
-      --panel: #111b25;
-      --surface: #172531;
-      --border: #314555;
-      --muted: #a8bbc9;
-      --mint: #91e6d0;
-      --amber: #ffd491;
-      --red: #ffc1b6;
-      font-family: Inter, "Segoe UI", system-ui, sans-serif;
-      line-height: 1.5;
+      color-scheme: light dark;
+      --page: #f3f3f0;
+      --surface: #ffffff;
+      --well: #f7f7f4;
+      --ink: #202520;
+      --muted: #535c55;
+      --line: #d6dcd5;
+      --line-strong: #b8c2b8;
+      --accent: #245c49;
+      --active: #e6efe9;
+      --warning: #85491d;
+      --warning-bg: #faf0df;
+      --attention: #335574;
+      --attention-bg: #eaf0f6;
+      --confirmed: #266144;
+      --confirmed-bg: #e8f2eb;
+      --error: #8d362f;
+      --error-bg: #f9e9e7;
+      --bar: #1e2923;
+      --bar-ink: #f1f6f0;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #161b18;
+        --surface: #202622;
+        --well: #19201c;
+        --ink: #edf3ed;
+        --muted: #adbab0;
+        --line: #3a453d;
+        --line-strong: #657168;
+        --accent: #9bcbb4;
+        --active: #293f34;
+        --warning: #f4c294;
+        --warning-bg: #463221;
+        --attention: #bbd5ef;
+        --attention-bg: #2a3d4b;
+        --confirmed: #a9d7bb;
+        --confirmed-bg: #2b4436;
+        --error: #ffc1b8;
+        --error-bg: #512f2e;
+        --bar: #101713;
+      }
     }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
-    body { margin: 0; }
-    h1, h2, h3, p, dl, dd, pre { margin: 0; }
-    code, pre, time { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; }
-    a { color: var(--mint); text-underline-offset: 4px; }
-    :is(a, button, select, .batch-scroll):focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
-    .frame { width: min(1240px, calc(100% - 48px)); margin-inline: auto; }
-    .masthead { border-bottom: 1px solid var(--border); }
-    .masthead .frame { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; }
-    .brand { color: inherit; font-weight: 680; text-decoration: none; }
-    main.frame { padding-block: 34px 46px; }
-    .intro { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 16px; }
-    h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.1; }
-    .intro p { margin-top: 8px; color: var(--muted); }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      font: inherit;
-      color: inherit;
-      cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      border-radius: 6px;
-      min-height: 40px;
-      padding: 6px 12px;
-      overflow-wrap: anywhere;
-    }
-    button:hover { border-color: #678897; }
-    .primary { color: #102b27; background: var(--mint); border-color: var(--mint); font-weight: 700; }
-    .primary:hover { background: #b5f1e2; }
-    .load-status { margin-block: 15px 18px; color: var(--muted); overflow-wrap: anywhere; font-size: .9rem; }
-    .load-error { margin-block: 0 18px; padding: 10px 12px; border: 1px solid #785047; border-radius: 8px; color: var(--red); }
-    .panel { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
-    .batch-panel { margin-bottom: 16px; }
-    .batch-header { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-    .batch-header h2 { font-size: 1.2rem; }
-    .batch-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .9rem; }
-    .batch-filter select {
-      color: inherit;
-      font: inherit;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 8px;
-      min-height: 36px;
-    }
-    .batch-count { color: var(--muted); font-size: .875rem; margin-top: 6px; }
-    .batch-scroll { overflow-x: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 6px; }
-    .batch-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; font-size: .9rem; }
-    .batch-table th, .batch-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-    .batch-table th { color: var(--muted); font-weight: 650; background: var(--canvas); }
-    .batch-table tr:last-child td { border-bottom: 0; }
-    .batch-case { min-height: 34px; padding: 4px 8px; }
-    .batch-case[aria-pressed="true"] { color: var(--mint); background: #16302e; border-color: var(--mint); }
-    .batch-empty { margin-top: 12px; }
-    .case-strip { margin-bottom: 16px; }
-    .case-strip h2 { font-size: 1.13rem; overflow-wrap: anywhere; }
-    .case-fields { display: flex; flex-wrap: wrap; gap: 9px 26px; margin-top: 10px; }
+    body { margin: 0; color: var(--ink); background: var(--page); font-size: 1rem; line-height: 1.45; }
+    h1, h2, h3, h4, p, dd, dl, ol, pre { margin: 0; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    :is(a, button, select, input, summary, .table-region):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    button, input, select { font: inherit; color: inherit; }
+    button, select { cursor: pointer; }
+    button { min-height: 34px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 5px 10px; }
+    button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--well); }
+    button:disabled { cursor: default; opacity: .65; }
+    .frame { width: min(1360px, calc(100% - 48px)); margin-inline: auto; }
+    .app-bar { background: var(--bar); color: var(--bar-ink); border-bottom: 1px solid var(--line); }
+    .app-inner { min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+    .brand { color: inherit; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .top-actions { display: flex; align-items: center; gap: 16px; }
+    .top-actions a { color: inherit; font-size: .875rem; }
+    .top-actions button { color: #1e2923; background: #edf3ed; border-color: #edf3ed; font-weight: 650; font-size: .875rem; }
+    .top-actions button:hover { color: #1e2923; background: #fff; border-color: #fff; }
+    main { padding-block: 24px 48px; }
+    .page-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 14px 20px; }
+    h1 { font-size: clamp(1.6rem, 4vw, 2rem); letter-spacing: -.032em; line-height: 1.18; }
+    .file-status, .supporting { color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
+    .file-status { margin-top: 5px; }
+    .sample-nav { display: flex; flex-wrap: wrap; gap: 4px; margin-block: 16px 18px; border-bottom: 1px solid var(--line); }
+    .sample-nav button { border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; font-size: .9rem; padding: 8px 12px; }
+    .sample-nav button[aria-pressed="true"] { color: var(--accent); font-weight: 650; border-bottom-color: var(--accent); }
+    .error-message { padding: 10px 12px; margin-bottom: 16px; background: var(--error-bg); color: var(--error); border: 1px solid var(--line); }
+    .workspace { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; min-width: 0; }
+    .queue { margin-bottom: 20px; }
+    .queue-header, .queue-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 16px; row-gap: 8px; padding: 11px 15px; }
+    .queue-header { border-bottom: 1px solid var(--line); }
+    .queue-header h2, .case-head h2 { font-size: 1.12rem; line-height: 1.22; }
+    .queue-header .supporting { margin-top: 4px; }
+    .queue-controls label { color: var(--muted); font-size: .875rem; display: flex; align-items: center; gap: 8px; }
+    .queue-controls input { width: min(240px, 52vw); border: 1px solid var(--line-strong); border-radius: 4px; height: 34px; background: var(--surface); padding: 4px 8px; }
+    .queue-filters { display: flex; gap: 5px; flex-wrap: wrap; }
+    .queue-filters button { background: transparent; border-color: transparent; font-size: .875rem; min-height: 32px; }
+    .queue-filters button[aria-pressed="true"] { background: var(--active); color: var(--accent); border-color: var(--line); font-weight: 650; }
+    .tab-count { font: .875rem var(--mono); margin-inline-start: 6px; }
+    .table-region { overflow: auto; max-height: 294px; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; font-size: .875rem; }
+    th { color: var(--muted); font-weight: 650; background: var(--well); }
+    th, td { padding: 7px 14px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+    .queue-table { min-width: 750px; }
+    .queue-table th { position: sticky; top: 0; z-index: 1; }
+    .queue-table tbody tr[data-selected="true"] { background: var(--active); }
+    .case-link { color: var(--accent); font-family: var(--mono); font-weight: 650; border: 0; background: transparent; min-height: 28px; padding: 1px 4px; text-align: left; }
+    .case-link:hover:not(:disabled) { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+    .empty { border-top: 1px solid var(--line); padding: 13px 15px; color: var(--muted); }
+    .status { display: inline-flex; width: fit-content; align-items: center; padding: 1px 6px; border-radius: 3px; font-size: .875rem; font-weight: 650; white-space: nowrap; }
+    .status[data-state="still_granted"], .status[data-state="detected"], .status[data-state="partial"] { background: var(--warning-bg); color: var(--warning); }
+    .status[data-state="inconclusive"], .status[data-state="missing"], .status[data-state="unresolved"] { background: var(--attention-bg); color: var(--attention); }
+    .status[data-state="verified_removed"], .status[data-state="complete"], .status[data-state="absent"] { background: var(--confirmed-bg); color: var(--confirmed); }
+    .status[data-state="invalid"] { background: var(--error-bg); color: var(--error); }
+    .status[data-state="retained"], .status[data-state="new"] { background: var(--well); color: var(--ink); }
+    .case-head { padding: 14px 15px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+    .case-fields { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 25px; }
     .fields dt { color: var(--muted); font-size: .875rem; }
-    .fields dd { overflow-wrap: anywhere; font-weight: 560; }
-    .inspection { display: grid; grid-template-columns: minmax(160px, .67fr) minmax(0, 1.34fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-    .panel-title { font-size: 1rem; font-weight: 680; }
-    .snapshot-options { display: grid; gap: 7px; margin-top: 12px; }
-    .snapshot-option, .record-option { width: 100%; text-align: left; }
-    .snapshot-option time { display: block; color: var(--muted); font-size: .8rem; }
-    .snapshot-option[aria-pressed="true"], .record-option[aria-pressed="true"] {
-      background: #16302e;
-      border-color: var(--mint);
-      color: var(--mint);
-    }
-    .result { display: inline-block; color: var(--amber); font-size: .9rem; font-weight: 700; }
-    .result[data-verdict="verified_removed"] { color: var(--mint); }
-    .result[data-verdict="inconclusive"] { color: #a6caff; }
-    .snapshot-title { margin-top: 3px; font-size: 1.42rem; line-height: 1.18; overflow-wrap: anywhere; }
-    .stamp, .reason { color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
-    .stamp { display: block; font-size: .86rem; }
-    .role-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
-    .role-comparison > div { padding: 9px 12px; background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; }
-    .role-comparison dd { margin-top: 4px; font-size: 1.1rem; }
-    .role-comparison[data-verdict="verified_removed"] > div:last-child dd { color: var(--mint); }
-    .role-comparison[data-verdict="inconclusive"] > div:last-child dd { color: #a6caff; }
-    .section-title { font-size: .97rem; margin-block: 18px 9px; padding-top: 14px; border-top: 1px solid var(--border); }
-    .paths { display: grid; gap: 12px; }
-    .path h3 { font-size: .9rem; overflow-wrap: anywhere; }
-    .path ol { display: grid; gap: 6px; padding-left: 1.6rem; margin-block: 7px 0; }
-    .path li::marker { color: var(--muted); font-size: .85rem; }
-    .quiet { color: var(--muted); font-size: .94rem; }
-    .coverage-list { display: grid; gap: 6px; }
-    .coverage-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
-    .coverage-state { font-size: .875rem; color: var(--amber); }
-    .coverage-state[data-state="complete"] { color: var(--mint); }
-    .coverage-state[data-state="invalid"] { color: var(--red); }
-    .snapshot-records { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
-    .snapshot-records button { width: auto; }
-    .record-heading { font-size: 1.15rem; margin-top: 7px; overflow-wrap: anywhere; }
-    .record-reference { display: block; margin-top: 7px; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere; }
-    .source-fields { display: grid; gap: 9px; margin-top: 13px; }
-    .source-fields dd { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; font-size: .88rem; }
-    pre { margin-top: 14px; padding: 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--canvas);
-          font-size: .86rem; overflow: auto; max-height: 22rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-    @media (max-width: 1050px) {
-      .inspection { grid-template-columns: minmax(155px, .55fr) minmax(0, 1.65fr); }
-      #record-pane { grid-column: 2; }
-    }
-    @media (max-width: 690px) {
+    .fields dd { font-weight: 625; overflow-wrap: anywhere; }
+    .timeline { padding: 9px 15px 12px; background: var(--well); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .timeline h3 { color: var(--muted); font-size: .875rem; margin-bottom: 7px; }
+    .timeline-items { display: flex; flex-wrap: wrap; gap: 6px; }
+    .snapshot-option { display: grid; gap: 1px; padding: 4px 8px; text-align: left; }
+    .snapshot-option[aria-pressed="true"], .record-link[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--active); }
+    .snapshot-option span { font-weight: 600; font-size: .875rem; overflow-wrap: anywhere; }
+    .snapshot-option time, .capture-time { color: var(--muted); font: .8125rem var(--mono); }
+    .decision-option { border-style: dashed; }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(290px, 1fr); }
+    .comparison, .inspector { padding: 15px; min-width: 0; }
+    .inspector { border-left: 1px solid var(--line); background: var(--well); min-height: 250px; }
+    .section-head { display: flex; align-items: end; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+    .section-head h3, .inspector h3 { font-size: 1rem; }
+    .reference-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: .875rem; color: var(--muted); }
+    .reference-choice select { border-radius: 4px; border: 1px solid var(--line); min-height: 32px; background: var(--surface); padding: 2px 6px; max-width: 210px; color: var(--ink); }
+    .capture-context { margin-top: 10px; }
+    .capture-context h4 { font-size: 1.075rem; overflow-wrap: anywhere; }
+    .capture-context .status { margin-bottom: 3px; }
+    .capture-time { display: block; margin-top: 2px; }
+    .reason { margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
+    .role-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-block: 10px 14px; border: 1px solid var(--line); border-radius: 4px; }
+    .role-comparison > div { padding: 7px 10px; }
+    .role-comparison > div + div { border-left: 1px solid var(--line); }
+    .role-comparison dd { margin-top: 2px; }
+    .section-title { margin-top: 17px; margin-bottom: 6px; font-size: .93rem; font-weight: 650; }
+    .change-table { border: 1px solid var(--line); border-top: 0; }
+    .change-table :is(th, td) { padding: 6px 8px; vertical-align: top; }
+    .record-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+    .record-link { min-height: 28px; font-size: .875rem; padding: 3px 6px; text-align: left; overflow-wrap: anywhere; }
+    .source-list { display: grid; gap: 6px; }
+    .source-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding-block: 4px; border-top: 1px solid var(--line); }
+    .source-item > div { min-width: 0; overflow-wrap: anywhere; }
+    .source-issue { margin-top: 4px; color: var(--muted); font-size: .875rem; }
+    .inspector-heading { font-size: 1rem; margin-top: 7px; overflow-wrap: anywhere; }
+    .inspector-reference { display: block; color: var(--muted); font: .8125rem var(--mono); overflow-wrap: anywhere; margin-top: 4px; }
+    .source-fields { display: grid; grid-template-columns: minmax(105px, .7fr) minmax(0, 1fr); row-gap: 6px; margin-top: 10px; }
+    .source-fields > div { display: contents; }
+    .source-fields dd, pre { font: .875rem/1.5 var(--mono); }
+    details { margin-top: 14px; }
+    summary { cursor: pointer; font-size: .875rem; color: var(--accent); }
+    pre { margin-top: 6px; padding: 8px; border: 1px solid var(--line); background: var(--surface); max-height: 19rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .snapshot-records { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    @media (max-width: 780px) {
       .frame { width: calc(100% - 28px); }
-      .batch-table { min-width: 0; }
-      .batch-table .batch-detail { display: none; }
-      .batch-table th, .batch-table td { padding: 7px 8px; }
-      .inspection { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-      #record-pane { grid-column: auto; }
-      .snapshot-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      main.frame { padding-top: 22px; }
+      .detail-grid { grid-template-columns: minmax(0, 1fr); }
+      .inspector { border-left: 0; border-top: 1px solid var(--line); min-height: 0; }
+      .queue-table { min-width: 530px; }
+      .queue-table .wide { display: none; }
     }
-    @media (max-width: 390px) {
-      .snapshot-options { grid-template-columns: minmax(0, 1fr); }
+    @media (max-width: 470px) {
+      .app-inner { padding-block: 8px; }
+      main { padding-top: 18px; }
+      .queue-table { min-width: 330px; }
+      .queue-table .medium { display: none; }
+      .queue-table :is(th, td) { padding-inline: 8px; }
+      .queue-controls label { width: 100%; }
+      .queue-controls input { flex: 1; min-width: 0; }
+      .change-table .status { white-space: normal; }
     }
   </style>
 </head>
-<body>
-  <header class="masthead">
-    <div class="frame">
+<body data-default-view="$default_sample">
+  <header class="app-bar">
+    <div class="frame app-inner">
       <a class="brand" href="index.html">Access Review Lab</a>
-      <a href="index.html">Guided demo</a>
-    </div>
-  </header>
-  <main class="frame">
-    <div class="intro">
-      <div>
-        <h1>Evidence Viewer</h1>
-        <p>Inspect an evidence packet or a batch report from this device.</p>
-      </div>
-      <div class="actions">
-        <button class="primary" type="button" id="open-packet">Open JSON file</button>
-        <button type="button" id="load-github-sample">GitHub capture sample</button>
-        <button type="button" id="load-sample">Load sample</button>
-        <button type="button" id="load-batch-sample">Load sample batch</button>
+      <div class="top-actions">
+        <a href="guide.html">Guided example</a>
+        <button type="button" id="open-packet">Open JSON file</button>
         <input type="file" id="packet-file" aria-label="Evidence or batch file" accept=".json,application/json" hidden>
       </div>
     </div>
-    <p class="load-status" id="load-status" role="status"></p>
-    <p class="load-error" id="load-error" role="alert" hidden></p>
-    <noscript>Enable JavaScript to open evidence packets and batch reports.</noscript>
-    <section class="panel batch-panel" id="batch-view" aria-labelledby="batch-title" hidden>
-      <div class="batch-header">
-        <div>
-          <h2 id="batch-title">Batch reviews</h2>
-          <p class="batch-count" id="batch-count" role="status"></p>
-        </div>
-        <label class="batch-filter">Outcome
-          <select id="batch-filter">
-            <option value="all">All outcomes</option>
-            <option value="still_granted">Still granted</option>
-            <option value="inconclusive">Needs evidence</option>
-            <option value="verified_removed">Verified removed</option>
-          </select>
-        </label>
+  </header>
+  <main class="frame">
+    <div class="page-head">
+      <div>
+        <h1>Access reviews</h1>
+        <p class="file-status" id="load-status" role="status"></p>
       </div>
-      <div class="batch-scroll" id="batch-table" role="region" aria-label="Batch review results" tabindex="0">
-        <table class="batch-table">
+    </div>
+    <nav class="sample-nav" aria-label="Sample files">
+      <button type="button" id="load-batch-sample" aria-pressed="false">Review queue</button>
+      <button type="button" id="load-sample" aria-pressed="false">CSV sample</button>
+      <button type="button" id="load-github-sample" aria-pressed="false">GitHub sample</button>
+    </nav>
+    <p class="error-message" id="load-error" role="alert" hidden></p>
+    <noscript>Enable JavaScript to open evidence packets and batch reports.</noscript>
+    <section class="workspace queue" id="batch-view" aria-labelledby="batch-title" hidden>
+      <div class="queue-header">
+        <div>
+          <h2 id="batch-title">Review queue</h2>
+          <p class="supporting" id="batch-count" role="status"></p>
+        </div>
+        <button type="button" id="export-queue">Export filtered CSV</button>
+      </div>
+      <div class="queue-controls">
+        <div class="queue-filters" id="batch-filters" role="group" aria-label="Filter by outcome"></div>
+        <label>Search reviews <input type="search" id="batch-search" placeholder="Case, account, or repository" autocomplete="off"></label>
+      </div>
+      <div class="table-region" id="batch-table" role="region" aria-label="Batch review results" tabindex="0">
+        <table class="queue-table">
           <thead><tr>
             <th scope="col">Case</th>
-            <th scope="col" class="batch-detail">Account</th>
+            <th scope="col" class="medium">Account</th>
             <th scope="col">Repository</th>
-            <th scope="col" class="batch-detail">Role</th>
+            <th scope="col" class="wide">Evidence type</th>
             <th scope="col">Outcome</th>
+            <th scope="col" class="wide">Follow-up</th>
           </tr></thead>
           <tbody id="batch-rows"></tbody>
         </table>
       </div>
-      <p class="quiet batch-empty" id="batch-empty" hidden>No cases match this outcome.</p>
+      <p class="empty" id="batch-empty" hidden>No reviews match the current filters.</p>
     </section>
-    <div id="packet-view" hidden>
-      <section class="panel case-strip" aria-labelledby="case-title">
-        <h2 id="case-title"></h2>
+    <section class="workspace" id="packet-view" aria-labelledby="case-title" hidden>
+      <header class="case-head">
+        <h2 id="case-title" tabindex="-1"></h2>
+        <button type="button" id="export-brief">Download case brief</button>
         <dl class="fields case-fields" id="case-fields"></dl>
-      </section>
-      <div class="inspection">
-        <nav class="panel" aria-labelledby="snapshots-title">
-          <h2 class="panel-title" id="snapshots-title">Snapshots</h2>
-          <div class="snapshot-options" id="snapshot-options"></div>
-        </nav>
-        <section class="panel" aria-labelledby="snapshot-title">
-          <p class="result" id="snapshot-result"></p>
-          <h2 class="snapshot-title" id="snapshot-title"></h2>
-          <time class="stamp" id="snapshot-time"></time>
-          <p class="reason" id="snapshot-reason"></p>
+      </header>
+      <nav class="timeline" aria-labelledby="timeline-title">
+        <h3 id="timeline-title">Snapshot history</h3>
+        <div class="timeline-items" id="snapshot-options"></div>
+      </nav>
+      <div class="detail-grid">
+        <section class="comparison" aria-labelledby="comparison-title">
+          <div class="section-head">
+            <h3 id="comparison-title">Compare snapshots</h3>
+            <label class="reference-choice">Reference snapshot <select id="snapshot-reference"></select></label>
+          </div>
+          <div class="capture-context" aria-live="polite">
+            <p class="status" id="snapshot-result"></p>
+            <h4 id="snapshot-title"></h4>
+            <time class="capture-time" id="snapshot-time"></time>
+            <p class="reason" id="snapshot-reason"></p>
+          </div>
           <dl class="fields role-comparison" id="role-comparison" aria-label="Effective role comparison" hidden></dl>
-          <h3 class="section-title" id="paths-title">Access paths</h3>
-          <div class="paths" id="access-paths"></div>
-          <h3 class="section-title">Source coverage</h3>
-          <div class="coverage-list" id="source-coverage"></div>
+          <section id="path-comparison" aria-labelledby="paths-title">
+            <h4 class="section-title" id="paths-title">Access path changes</h4>
+            <p class="supporting" id="path-empty" hidden>No access paths appear in these snapshots.</p>
+            <table class="change-table" id="path-table">
+              <thead><tr><th scope="col">Access path</th><th scope="col">Change</th><th scope="col">Evidence</th></tr></thead>
+              <tbody id="access-paths"></tbody>
+            </table>
+          </section>
+          <h4 class="section-title">Selected snapshot coverage</h4>
+          <div class="source-list" id="source-coverage"></div>
           <div class="snapshot-records" id="snapshot-records"></div>
         </section>
-        <section class="panel" id="record-pane" aria-labelledby="record-pane-title">
-          <h2 class="panel-title" id="record-pane-title">Source evidence</h2>
-          <h3 class="record-heading" id="record-title"></h3>
-          <code class="record-reference" id="record-reference"></code>
-          <dl class="fields source-fields" id="record-fields" hidden></dl>
-          <pre id="record-data"></pre>
-        </section>
+        <aside class="inspector" id="record-pane" aria-labelledby="record-pane-title">
+          <h3 id="record-pane-title">Evidence record</h3>
+          <h4 class="inspector-heading" id="record-title" tabindex="-1"></h4>
+          <code class="inspector-reference" id="record-reference"></code>
+          <dl class="fields source-fields" id="record-fields"></dl>
+          <details id="raw-record">
+            <summary>Raw JSON</summary>
+            <pre id="record-data"></pre>
+          </details>
+        </aside>
       </div>
-    </div>
+    </section>
   </main>
   <script type="text/plain" id="sample-packet">$evidence_payload</script>
   <script type="text/plain" id="sample-batch">$batch_payload</script>
