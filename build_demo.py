@@ -246,13 +246,14 @@ def render_demo(packet: dict, layout: Template) -> str:
     )
 
 
-def render_viewer() -> str:
+def render_viewer(*, default_sample: str = "csv") -> str:
     sample = read_csv_exports(ROOT / "examples" / "csv" / "checked-manifest.json", include_provenance=True)
     packet = build_packet(sample.scenario, source_provenance=sample.source_provenance)
-    batch = build_batch_packet(load_batch(ROOT / "examples" / "batch" / "manifest.json"))
+    batch = build_batch_packet(load_batch(ROOT / "examples" / "workbench.json", include_provenance=True))
     github_review, _ = load_github_review(ROOT / "examples" / "github" / "manifest.json")
     github_packet = build_packet(github_review)
-    script = (ROOT / "web" / "viewer.js").read_text(encoding="utf-8")
+    script = "\n".join((ROOT / "web" / file).read_text(encoding="utf-8")
+                       for file in ("review_logic.js", "viewer.js"))
     layout = Template((ROOT / "web" / "viewer.html").read_text(encoding="utf-8"))
     return layout.substitute(
         evidence_payload=b64encode(pretty_json(packet).encode("utf-8")).decode("ascii"),
@@ -260,6 +261,7 @@ def render_viewer() -> str:
         github_payload=b64encode(pretty_json(github_packet).encode("utf-8")).decode("ascii"),
         script_hash=b64encode(sha256(script.encode("utf-8")).digest()).decode("ascii"),
         viewer_script=script,
+        default_sample=default_sample,
     )
 
 
@@ -271,7 +273,8 @@ def main() -> int:
     packet = build_packet(case_data)
     layout = Template((ROOT / "web" / "template.html").read_text(encoding="utf-8"))
     assets = {
-        ROOT / "docs" / "index.html": render_demo(packet, layout),
+        ROOT / "docs" / "index.html": render_viewer(default_sample="batch"),
+        ROOT / "docs" / "guide.html": render_demo(packet, layout),
         ROOT / "docs" / "evidence.json": pretty_json(packet),
         ROOT / "docs" / "viewer.html": render_viewer(),
     }

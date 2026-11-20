@@ -33,13 +33,19 @@ class ViewerAssetsTests(unittest.TestCase):
         batch = json.loads(b64decode(encoded.group(1)))
         self.assertEqual(batch["batch_version"], 1)
         reviews = batch["reviews"]
-        self.assertEqual([review["packet"]["case"]["id"] for review in reviews], ["AR-101", "AR-102", "AR-103"])
+        self.assertEqual([review["packet"]["case"]["id"] for review in reviews],
+                         ["AR-101", "GH-001", "AR-001", "AR-102", "AR-103"])
         selected = [
             next(observation["verdict"] for observation in review["packet"]["observations"]
                  if observation["snapshot"] == review["follow_up"])
             for review in reviews
         ]
-        self.assertEqual(selected, ["still_granted", "inconclusive", "verified_removed"])
+        self.assertEqual(selected, ["still_granted", "still_granted", "inconclusive", "inconclusive", "verified_removed"])
+
+    def test_home_and_viewer_have_distinct_defaults_and_share_the_guide(self):
+        self.assertIn('data-default-view="batch"', render_viewer(default_sample="batch"))
+        self.assertIn('data-default-view="csv"', render_viewer())
+        self.assertIn('href="guide.html"', render_viewer())
 
     def test_security_policy_matches_the_script_in_the_page(self):
         page = render_viewer()

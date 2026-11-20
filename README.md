@@ -2,11 +2,11 @@
 
 Access Review Lab replays an identity and access management (IAM) offboarding review from timestamped exports or GitHub role captures. It checks whether a former employee's account still has a repository role and links each finding to the source records. The bundled cases use synthetic data.
 
-[Live demo](https://xzl7v.github.io/access-review-lab/) · [GitHub capture demo](https://xzl7v.github.io/access-review-lab/viewer.html#github) · [Evidence Viewer](https://xzl7v.github.io/access-review-lab/viewer.html) · [Evidence packet](docs/evidence.json)
+[Review workspace](https://xzl7v.github.io/access-review-lab/) · [Guided example](https://xzl7v.github.io/access-review-lab/guide.html) · [GitHub capture demo](https://xzl7v.github.io/access-review-lab/viewer.html#github) · [Evidence packet](docs/evidence.json)
 
 ## Quick start
 
-Requires Python 3.10 or later. The CLI and tests use the standard library.
+Requires Python 3.10 or later. The CLI uses the Python standard library.
 
 ```sh
 git clone https://github.com/xzl7v/access-review-lab.git
@@ -16,6 +16,14 @@ python3 replay.py --verify docs/evidence.json
 ```
 
 The replay prints one verdict per snapshot and the source references for any matching grant path. Use `--scenario PATH` to review a different input. An invalid scenario or mismatched evidence packet exits with status `2`.
+
+## Use the review workspace
+
+The workspace opens a queue of five synthetic reviews covering scenario files, CSV exports, and GitHub captures. Filter by outcome and search by case, account, repository, or evidence. **Export filtered CSV** downloads the follow-ups currently shown in the queue.
+
+Select a case and use **Snapshot history** to inspect individual captures and the recorded decision. **Reference snapshot** sets the comparison point. For GitHub captures the workspace shows the two effective roles. For grant exports it compares the cited access paths and opens the records behind each change. A path appears as **No longer observed** when a complete selected source omits one of its required records. **Unresolved** means the records are insufficient to confirm that change.
+
+The evidence pane shows source fields and fingerprints where available. Expand **Raw JSON** to read the original record. **Download case brief** exports the selected snapshot, decision, and source coverage as Markdown. The same controls work with local files opened through **Open JSON file**.
 
 ## Review GitHub access
 
@@ -127,7 +135,7 @@ Verification compares the normalized review and the CSV fingerprints. Changes to
 
 In the viewer, choose **Open JSON file** to inspect a local version 1 or version 2 evidence packet. Select a snapshot to see its verdict, grant paths, and source coverage. Select a cited record to see its source data and any CSV file, record number, and fingerprint stored in the packet.
 
-**Load sample** opens the bundled CSV review. To use the viewer offline, open [docs/viewer.html](docs/viewer.html) in your browser.
+**CSV sample** opens the bundled CSV review. Open [docs/index.html](docs/index.html) in your browser to use the workspace offline.
 
 ## Review a batch
 
@@ -139,7 +147,7 @@ python3 batch_review.py examples/batch/manifest.json --output output/batch
 
 `output/batch/report.md` lists cases with remaining access first, then cases that need evidence, then verified removals. Each row identifies the reviewed follow-up, explains the result, and links to its evidence packet.
 
-Open `output/batch/batch.json` in the Evidence Viewer to filter cases by outcome. Selecting a case opens its recorded follow-up and evidence in the same page. [Open the sample batch](https://xzl7v.github.io/access-review-lab/viewer.html#batch)
+Open `output/batch/batch.json` in the workspace to filter cases by outcome. Selecting a case opens its recorded follow-up and evidence in the same page. The [mixed example manifest](examples/workbench.json) builds the batch used in the workspace demo.
 
 Use `scenario` for a JSON case, `exports` for a CSV manifest, or `github` for a GitHub capture manifest. Input paths are relative to the batch manifest, and case IDs must be unique. Each case needs a follow-up snapshot. When a case has several, set `follow_up` to the snapshot ID the report should use. [Example batch manifest](examples/batch/manifest.json)
 
@@ -175,7 +183,8 @@ The SQLite ledger stores decisions and evidence packets locally. Replaying the s
 
 ```sh
 python3 -m unittest discover -s tests -v
+node --test tests/review_logic.test.cjs
 python3 build_demo.py --check
 ```
 
-Run `python3 build_demo.py` after changing the sample inputs or files under `web/`. Open [docs/index.html](docs/index.html) in a browser to use the demo offline. CI runs the tests, checks the generated demo and viewer, and verifies the bundled evidence packet. [CI workflow](.github/workflows/ci.yml)
+Run `python3 build_demo.py` after changing the sample inputs or files under `web/`. The browser logic tests use Node.js 22 and its built-in test runner. CI checks the generated workspace and guide, runs both test suites, and verifies the bundled evidence packet. [CI workflow](.github/workflows/ci.yml)

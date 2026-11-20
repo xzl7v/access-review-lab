@@ -1,22 +1,6 @@
 "use strict";
 
-const verdicts = {
-  detected: "Access detected",
-  still_granted: "Still granted",
-  verified_removed: "Verified removed",
-  inconclusive: "Needs evidence",
-};
 const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 };
-const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing", invalid: "Invalid" };
-const githubModel = "github_effective";
-const githubSource = "github_permission";
-const sourceLabels = {
-  direct_grants: ["Direct grant", "Direct grants"],
-  team_memberships: ["Team membership", "Team memberships"],
-  team_grants: ["Team grant", "Team grants"],
-  team_links: ["Team link", "Team links"],
-  github_permission: ["GitHub role response", "GitHub role capture"],
-};
 const byId = id => document.getElementById(id);
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const hasText = value => typeof value === "string" && value.trim() !== "";
@@ -128,12 +112,31 @@ function humanize(value) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+const utcTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC", day: "2-digit", month: "short", year: "numeric",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function timeLabel(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : utcTime.format(date) + " UTC";
+}
+
 function renderFields(container, fields) {
   container.replaceChildren(...fields.map(([label, value]) => {
     const field = element("div");
-    field.append(element("dt", label), element("dd", value));
+    field.append(element("dt", label), element("dd", String(value ?? "Unavailable")));
     return field;
   }));
+}
+
+function statusLabel(text, state) {
+  const status = element("span", text, "status");
+  status.dataset.state = state;
+  return status;
+}
+
+function scopedSource(name) {
+  return Object.hasOwn(sources, name) ? sources[name] : { label: humanize(name), record: "Source record" };
 }
 
 function showRecord(packet, title, reference, record) {
@@ -141,30 +144,45 @@ function showRecord(packet, title, reference, record) {
   byId("record-reference").textContent = reference;
   const provenance = packet.packet_version === 2 ? packet.provenance : null;
   const location = provenance?.records[reference];
+  const name = sourceName(reference);
   const source = provenance?.sources[location?.source_ref ?? reference];
-  const fields = byId("record-fields");
-  let metadata = source ? [
-    ["CSV file", source.file],
-    location ? ["CSV record", String(location.record_number)] : ["CSV records", String(source.record_count)],
-    ["SHA-256", source.sha256],
-  ] : [];
+  const metadata = [];
+  if (source) {
+    metadata.push(["CSV file", source.file],
+      location ? ["CSV record", location.record_number] : ["CSV records", source.record_count],
+      ["SHA-256", source.sha256]);
+  }
   if (packet.case.access_model === githubModel && reference.endsWith("/sources/" + githubSource)
       && isObject(record.capture)) {
     const capture = record.capture;
     const lookup = capture.role_lookup;
     const user = lookup?.data?.user ?? capture.account_lookup?.data;
-    metadata = [
-      ["Capture file", record.file],
-      ["Repository ID", capture.repository_lookup?.data?.id ?? "Unresolved"],
-      ["Account ID", user?.id ?? "Unresolved"],
-      ["Role lookup", Number.isInteger(lookup?.status) ? "HTTP " + lookup.status : "Unavailable"],
-      ["GitHub request ID", lookup?.request_id ?? "Unavailable"],
-      ["SHA-256", record.sha256],
-    ];
+    metadata.push(
+      ["Capture file", record.file], ["Repository ID", capture.repository_lookup?.data?.id],
+      ["Account ID", user?.id], ["Role lookup", Number.isInteger(lookup?.status) ? "HTTP " + lookup.status : null],
+      ["Request ID", lookup?.request_id], ["SHA-256", record.sha256],
+    );
+  } else if (isObject(record.capture)) {
+    if (!source) metadata.push(["Capture file", record.capture.file]);
+    metadata.push(["Capture time", record.capture.captured_at], ["Repository scope", record.capture.repository]);
   }
+  if (reference === "/case/decision") {
+    metadata.push(["Action", hasText(record.action) ? humanize(record.action) : null], ["Reviewer", record.reviewer],
+      ["Recorded at", record.recorded_at], ["Rationale", record.reason]);
+  } else if (reference.match(/^\/snapshots\/[0-9]+$/)) {
+    metadata.push(["Capture time", record.captured_at], ["Repository scope", record.repository]);
+  } else if (location || reference.includes("/rows/")) {
+    const fields = scopedSource(name).fields ?? [];
+    metadata.push(...fields.map(field => [humanize(field), record[field]]));
+  } else if (!isObject(record.capture) && typeof record.complete === "boolean" && !source) {
+    metadata.push(["Export marked complete", record.complete ? "Yes" : "No"],
+      ["Rows", Array.isArray(record.rows) ? record.rows.length : null]);
+  }
+  const fields = byId("record-fields");
   fields.hidden = !metadata.length;
   renderFields(fields, metadata);
-
+  const raw = byId("raw-record");
+  raw.open = false;
   const data = byId("record-data");
   try {
     data.textContent = JSON.stringify(record, null, 2);
@@ -174,28 +192,32 @@ function showRecord(packet, title, reference, record) {
   data.scrollTop = 0;
 }
 
-function showObservation(packet, observation) {
+function focusInspector() {
+  if (window.matchMedia("(max-width: 780px)").matches) byId("record-title").focus();
+}
+
+const changeLabels = {
+  retained: "Still present", absent: "No longer observed", unresolved: "Unresolved", new: "Newly observed",
+};
+
+function showObservation(packet, referenceObservation, observation) {
   const result = byId("snapshot-result");
   result.textContent = verdicts[observation.verdict];
-  result.dataset.verdict = observation.verdict;
+  result.dataset.state = observation.verdict;
   byId("snapshot-title").textContent = humanize(observation.snapshot);
   const time = byId("snapshot-time");
-  time.textContent = observation.captured_at;
+  time.textContent = timeLabel(observation.captured_at);
   time.dateTime = observation.captured_at;
   byId("snapshot-reason").textContent = observation.reason;
   const github = packet.case.access_model === githubModel;
   const comparison = byId("role-comparison");
   comparison.hidden = !github;
   if (github) {
-    comparison.dataset.verdict = observation.verdict;
-    renderFields(comparison, [
-      ["Baseline role", humanize(packet.observations[0].effective_role)],
-      ["Selected capture", hasText(observation.effective_role) ? humanize(observation.effective_role) : "Unresolved"],
-    ]);
+    const showRole = item => hasText(item.effective_role) ? humanize(item.effective_role) : "Unresolved";
+    renderFields(comparison, [["Reference role", showRole(referenceObservation)], ["Selected role", showRole(observation)]]);
   }
+  byId("path-comparison").hidden = github;
   const paths = byId("access-paths");
-  paths.hidden = github;
-  byId("paths-title").hidden = github;
   const coverage = byId("source-coverage");
   const records = byId("snapshot-records");
   paths.replaceChildren();
@@ -206,8 +228,8 @@ function showObservation(packet, observation) {
   let active;
   let first;
 
-  function recordButton(title, reference, record) {
-    const button = element("button", title, "record-option");
+  function recordButton(label, title, reference, record) {
+    const button = element("button", label, "record-link");
     button.type = "button";
     button.setAttribute("aria-controls", "record-pane");
     button.setAttribute("aria-pressed", "false");
@@ -220,137 +242,216 @@ function showObservation(packet, observation) {
     first ??= select;
     button.addEventListener("click", () => {
       select();
-      if (window.matchMedia("(max-width: 1050px)").matches) {
-        byId("record-pane").scrollIntoView({ block: "nearest" });
-      }
+      focusInspector();
     });
     return button;
   }
 
-  for (const path of github ? [] : observation.paths) {
-    const group = element("div", "", "path");
-    const title = path.kind === "direct" ? "Direct grant" : "Team grant via " + path.team_id;
-    const steps = element("ol");
-    for (const reference of path.evidence) {
-      const name = reference.split("/")[4];
-      const label = Object.hasOwn(sourceLabels, name) ? sourceLabels[name][0] : "Source record";
-      const step = element("li");
-      step.append(recordButton(label, reference, packet.evidence[reference]));
-      steps.append(step);
+  if (!github) {
+    const changes = comparePaths(packet, referenceObservation, observation);
+    byId("path-table").hidden = !changes.length;
+    byId("path-empty").hidden = changes.length > 0;
+    for (const { path, observed, absent, state } of changes) {
+      const title = path.kind === "direct" ? "Direct grant" : "Team grant via " + path.team_id;
+      const row = element("tr");
+      const status = element("td");
+      status.append(statusLabel(changeLabels[state], state));
+      const evidence = element("td");
+      const controls = element("div", "", "record-controls");
+      if (absent) {
+        const name = scopedSource(absent).label;
+        const reference = observation.snapshot_ref + "/sources/" + absent;
+        controls.append(recordButton(name + " check", name, reference, exports[absent]));
+      }
+      for (const reference of (observed ?? path).evidence) {
+        const name = scopedSource(sourceName(reference)).record;
+        const label = observed ? name : "Reference " + name.toLowerCase();
+        controls.append(recordButton(label, name, reference, packet.evidence[reference]));
+      }
+      evidence.append(controls);
+      row.append(element("td", title), status, evidence);
+      paths.append(row);
     }
-    group.append(element("h3", title), steps);
-    paths.append(group);
   }
-  if (!paths.firstChild) paths.append(element("p", "No grant paths observed.", "quiet"));
 
   for (const [name, state] of Object.entries(observation.source_coverage)) {
-    const row = element("div", "", "coverage-item");
-    const title = Object.hasOwn(sourceLabels, name) ? sourceLabels[name][1] : humanize(name);
-    const status = element("span", coverageLabels[state], "coverage-state");
-    status.dataset.state = state;
+    const line = element("div", "", "source-item");
+    const item = element("div");
+    const title = scopedSource(name).label;
     const source = Object.hasOwn(exports, name) ? exports[name] : null;
     const reference = observation.snapshot_ref + "/sources/" + name;
-    row.append(isObject(source) ? recordButton(title, reference, source) : element("span", title), status);
-    coverage.append(row);
+    item.append(isObject(source) ? recordButton(title, title, reference, source) : element("span", title));
+    const issue = observation.source_issues?.[name];
+    if (hasText(issue?.reason)) item.append(element("p", [issue.file, issue.reason].filter(hasText).join(" · "), "source-issue"));
+    line.append(item, statusLabel(coverageLabels[state], state));
+    coverage.append(line);
   }
-  if (!coverage.firstChild) coverage.append(element("p", "Source coverage unavailable for this snapshot.", "quiet"));
-
-  records.append(
-    recordButton("Snapshot record", observation.snapshot_ref, snapshot),
-    recordButton("Review decision", "/case/decision", packet.evidence["/case/decision"]),
-  );
+  if (!coverage.firstChild) coverage.append(element("p", "Source coverage is unavailable.", "supporting"));
+  records.append(recordButton("Snapshot record", "Snapshot record", observation.snapshot_ref, snapshot));
   first();
+
+  return () => {
+    active?.setAttribute("aria-pressed", "false");
+    active = null;
+    showRecord(packet, "Review decision", "/case/decision", packet.evidence["/case/decision"]);
+    focusInspector();
+  };
+}
+
+function saveDownload(filename, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = url;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function renderPacket(packet, selectedIndex) {
-  byId("case-title").textContent = "Case " + packet.case.id;
-  const fields = [
-    ["Account", packet.case.account_id],
-    ["Repository", packet.case.repository],
-    ["Role", packet.case.role],
-  ];
-  if (packet.case.access_model === githubModel) {
-    fields.push(["Capture origin", packet.case.github_scope.origin === "synthetic" ? "Synthetic data" : "GitHub REST API"]);
+  const review = packet.case;
+  const decision = packet.evidence["/case/decision"];
+  byId("case-title").textContent = "Case " + review.id;
+  const fields = [["Account", review.account_id], ["Repository", review.repository],
+    ["Role under review", review.role], ["Evidence type", inputType(packet)]];
+  if (review.access_model === githubModel) {
+    fields.push(["Capture origin", review.github_scope.origin === "synthetic" ? "Synthetic data" : "GitHub REST API"]);
   }
   renderFields(byId("case-fields"), fields);
   const options = byId("snapshot-options");
+  const comparison = byId("snapshot-reference");
+  let selected = selectedIndex ?? Math.max(packet.observations.findIndex(item => item.verdict === "still_granted"), 0);
+  let showDecision;
+  const decisionButton = element("button", "", "snapshot-option decision-option");
+  decisionButton.type = "button";
+  decisionButton.setAttribute("aria-controls", "record-pane");
+
+  function addTime(button, label, timestamp) {
+    button.append(element("span", label));
+    if (hasText(timestamp)) {
+      const time = element("time", timeLabel(timestamp));
+      time.dateTime = timestamp;
+      button.append(time);
+    }
+  }
+
   const buttons = packet.observations.map((observation, index) => {
-    const button = element("button", humanize(observation.snapshot), "snapshot-option");
+    const button = element("button", "", "snapshot-option");
     button.type = "button";
-    button.setAttribute("aria-pressed", "false");
-    const time = element("time", observation.captured_at);
-    time.dateTime = observation.captured_at;
-    button.append(time);
-    button.addEventListener("click", () => selectSnapshot(index));
+    addTime(button, humanize(observation.snapshot), observation.captured_at);
+    button.addEventListener("click", () => {
+      selected = index;
+      showSelection();
+    });
     return button;
   });
+  comparison.replaceChildren(...packet.observations.map((observation, index) => {
+    const option = element("option", humanize(observation.snapshot));
+    option.value = String(index);
+    return option;
+  }));
+  comparison.value = "0";
+  comparison.onchange = showSelection;
+  addTime(decisionButton, "Review decision", decision.recorded_at);
+  decisionButton.addEventListener("click", () => showDecision());
+  options.replaceChildren(buttons[0], decisionButton, ...buttons.slice(1));
 
-  function selectSnapshot(index) {
-    buttons.forEach((button, position) => button.setAttribute("aria-pressed", String(position === index)));
-    showObservation(packet, packet.observations[index]);
+  function showSelection() {
+    buttons.forEach((button, index) => button.setAttribute("aria-pressed", String(index === selected)));
+    showDecision = showObservation(packet, packet.observations[Number(comparison.value)], packet.observations[selected]);
   }
-  options.replaceChildren(...buttons);
-  selectSnapshot(selectedIndex ?? Math.max(
-    packet.observations.findIndex(observation => observation.verdict === "still_granted"), 0,
-  ));
+
+  byId("export-brief").onclick = () => {
+    const id = review.id.replace(/[^a-z0-9_-]/gi, "-").slice(0, 80) || "review";
+    const brief = caseBrief(packet, packet.observations[Number(comparison.value)], packet.observations[selected]);
+    saveDownload(id + "-review.md", brief, "text/markdown;charset=utf-8");
+  };
+  showSelection();
   byId("packet-view").hidden = false;
 }
 
 function renderBatch(reviews) {
-  const filter = byId("batch-filter");
+  const search = byId("batch-search");
   const rows = byId("batch-rows");
-  const buttons = new Map();
-  let selected = reviews[0];
+  const filters = byId("batch-filters");
+  const exportButton = byId("export-queue");
+  const states = ["all", ...Object.keys(batchPriority)];
+  const filterButtons = new Map();
+  let selected;
+  let outcome = "all";
+  let shown = [];
 
   function selectReview(review) {
+    if (review === selected && !byId("packet-view").hidden) return;
     selected = review;
-    for (const [entry, button] of buttons) {
-      button.setAttribute("aria-pressed", String(entry === review));
-    }
     renderPacket(review.packet, review.index);
   }
 
   function showMatchingReviews() {
-    const matches = reviews.filter(review => filter.value === "all" || review.verdict === filter.value);
-    const hasResults = matches.length > 0;
-    rows.replaceChildren();
-    buttons.clear();
-    for (const review of matches) {
-      const { id, account_id: account, repository, role } = review.packet.case;
-      const button = element("button", id, "batch-case");
+    const query = search.value;
+    const searchable = filterReviews(reviews, "all", query);
+    shown = outcome === "all" ? searchable : searchable.filter(item => item.verdict === outcome);
+    for (const [state, button] of filterButtons) {
+      const count = state === "all" ? searchable.length : searchable.filter(item => item.verdict === state).length;
+      const label = state === "all" ? "All" : verdicts[state];
+      button.replaceChildren(document.createTextNode(label), element("span", String(count), "tab-count"));
+      button.setAttribute("aria-label", label + " (" + count + (count === 1 ? " review)" : " reviews)"));
+      button.setAttribute("aria-pressed", String(state === outcome));
+    }
+    if (shown.length) selectReview(shown.includes(selected) ? selected : shown[0]);
+    else byId("packet-view").hidden = true;
+    rows.replaceChildren(...shown.map(review => {
+      const { id, account_id: account, repository } = review.packet.case;
+      const item = review.packet.observations[review.index];
+      const button = element("button", id, "case-link");
       button.type = "button";
       button.setAttribute("aria-controls", "packet-view");
+      button.setAttribute("aria-current", String(review === selected));
       button.addEventListener("click", () => {
         selectReview(review);
-        byId("case-title").scrollIntoView({ block: "nearest" });
+        for (const row of rows.children) {
+          const active = row.contains(button);
+          row.dataset.selected = String(active);
+          row.querySelector("button").setAttribute("aria-current", String(active));
+        }
+        byId("case-title").focus();
       });
-      buttons.set(review, button);
       const caseCell = element("td");
       caseCell.append(button);
-      const outcome = element("span", verdicts[review.verdict], "result");
-      outcome.dataset.verdict = review.verdict;
-      const resultCell = element("td");
-      resultCell.append(outcome);
+      const outcomeCell = element("td");
+      outcomeCell.append(statusLabel(verdicts[review.verdict], review.verdict));
       const row = element("tr");
-      row.append(caseCell, element("td", account, "batch-detail"), element("td", repository),
-        element("td", role, "batch-detail"), resultCell);
-      rows.append(row);
-    }
-    byId("batch-count").textContent = "Showing " + matches.length + " of " + reviews.length
-      + (reviews.length === 1 ? " case" : " cases");
-    byId("batch-table").hidden = !hasResults;
-    byId("batch-empty").hidden = hasResults;
-    if (hasResults) selectReview(matches.includes(selected) ? selected : matches[0]);
-    else byId("packet-view").hidden = true;
+      row.dataset.selected = String(review === selected);
+      row.append(caseCell, element("td", account, "medium"), element("td", repository),
+        element("td", inputType(review.packet), "wide"), outcomeCell, element("td", timeLabel(item.captured_at), "wide"));
+      return row;
+    }));
+    byId("batch-count").textContent = "Showing " + shown.length + " of " + reviews.length
+      + (reviews.length === 1 ? " review" : " reviews");
+    byId("batch-table").hidden = !shown.length;
+    byId("batch-empty").hidden = shown.length > 0;
+    exportButton.disabled = !shown.length;
   }
 
-  filter.value = "all";
-  filter.onchange = showMatchingReviews;
+  filters.replaceChildren(...states.map(state => {
+    const button = element("button");
+    button.type = "button";
+    button.addEventListener("click", () => {
+      outcome = state;
+      showMatchingReviews();
+    });
+    filterButtons.set(state, button);
+    return button;
+  }));
+  search.value = "";
+  search.oninput = showMatchingReviews;
+  exportButton.onclick = () => saveDownload("access-reviews.csv", reviewCsv(shown), "text/csv;charset=utf-8");
   byId("batch-view").hidden = false;
   showMatchingReviews();
 }
 
-function openDocument(text, name) {
+function openDocument(text, name, activeSample = null) {
   const payload = parseJson(text);
   let status;
   if (isObject(payload) && Object.hasOwn(payload, "batch_version")) {
@@ -360,10 +461,13 @@ function openDocument(text, name) {
   } else {
     const packet = validatePacket(payload);
     byId("batch-view").hidden = true;
-    byId("batch-filter").onchange = null;
+    byId("batch-search").oninput = null;
     byId("batch-rows").replaceChildren();
     renderPacket(packet);
     status = "Packet v" + packet.packet_version;
+  }
+  for (const [mode, sample] of Object.entries(sampleFiles)) {
+    byId(sample.button).setAttribute("aria-pressed", String(mode === activeSample));
   }
   byId("load-status").textContent = name + " · " + status;
   byId("load-error").hidden = true;
@@ -375,6 +479,11 @@ function displayError(error) {
   message.hidden = false;
 }
 
+const sampleFiles = {
+  batch: { button: "load-batch-sample", script: "sample-batch", title: "Sample queue" },
+  csv: { button: "load-sample", script: "sample-packet", title: "CSV sample" },
+  github: { button: "load-github-sample", script: "sample-github", title: "GitHub capture sample" },
+};
 const picker = byId("packet-file");
 let request = 0;
 byId("open-packet").addEventListener("click", () => picker.click());
@@ -391,23 +500,20 @@ picker.addEventListener("change", async () => {
   }
 });
 
-function loadSample(id, name) {
+function loadSample(mode) {
   request++;
   try {
-    const encoded = byId(id).textContent.trim();
+    const { script, title } = sampleFiles[mode];
+    const encoded = byId(script).textContent.trim();
     const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
-    openDocument(new TextDecoder().decode(bytes), name);
+    openDocument(new TextDecoder().decode(bytes), title, mode);
   } catch (error) {
     displayError(error);
   }
 }
 
-const loadSampleReview = () => loadSample("sample-packet", "Sample packet");
-const loadSampleBatch = () => loadSample("sample-batch", "Sample batch");
-const loadGithubSample = () => loadSample("sample-github", "GitHub capture sample");
-byId("load-sample").addEventListener("click", loadSampleReview);
-byId("load-batch-sample").addEventListener("click", loadSampleBatch);
-byId("load-github-sample").addEventListener("click", loadGithubSample);
-if (window.location.hash === "#batch") loadSampleBatch();
-else if (window.location.hash === "#github") loadGithubSample();
-else loadSampleReview();
+for (const [mode, sample] of Object.entries(sampleFiles)) {
+  byId(sample.button).addEventListener("click", () => loadSample(mode));
+}
+const initialView = window.location.hash.slice(1);
+loadSample(Object.hasOwn(sampleFiles, initialView) ? initialView : document.body.dataset.defaultView);
