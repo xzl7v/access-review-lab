@@ -4,6 +4,8 @@ Access Review Lab replays an identity and access management (IAM) offboarding re
 
 [Review workspace](https://xzl7v.github.io/access-review-lab/) · [Guided example](https://xzl7v.github.io/access-review-lab/guide.html) · [GitHub capture demo](https://xzl7v.github.io/access-review-lab/viewer.html#github) · [Evidence packet](docs/evidence.json)
 
+![Access Review Lab workspace showing source file verification for a GitHub capture](docs/assets/review-workspace.jpg)
+
 ## Quick start
 
 Requires Python 3.10 or later. The CLI uses the Python standard library.
@@ -24,6 +26,12 @@ The workspace opens a queue of five synthetic reviews covering scenario files, C
 Select a case and use **Snapshot history** to inspect individual captures and the recorded decision. **Reference snapshot** sets the comparison point. For GitHub captures the workspace shows the two effective roles. For grant exports it compares the cited access paths and opens the records behind each change. A path appears as **No longer observed** when a complete selected source omits one of its required records. **Unresolved** means the records are insufficient to confirm that change.
 
 The evidence pane shows source fields and fingerprints where available. Expand **Raw JSON** to read the original record. **Download case brief** exports the selected snapshot, decision, and source coverage as Markdown. The same controls work with local files opened through **Open JSON file**.
+
+### Verify source files
+
+Open a GitHub capture or CSV packet with provenance and select **Verify evidence**. Choose the original source files together, or choose the folder containing the capture manifest to preserve relative paths when filenames repeat. The browser recalculates SHA-256 from the file bytes and reports each match, mismatch, missing file, or ambiguous filename locally.
+
+Use `replay.py --verify` with the original inputs to replay the review and compare the full evidence packet.
 
 ## Review GitHub access
 
@@ -72,8 +80,6 @@ Case `AR-001` tracks the `Admin` role for account `A-202` on `release-runbooks`.
 | 09:15 | Still granted | The direct grant is gone. Team membership still grants Admin. |
 | 09:25 | Verified removed | Complete exports show no direct grant or team path to Admin. |
 | 09:25 | Verification pending | The direct grant check returns zero. The team membership export is missing. |
-
-![Remaining team grant after the direct grant was removed](docs/assets/team-grant.png)
 
 ## Import CSV exports
 
