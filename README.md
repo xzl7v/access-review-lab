@@ -1,8 +1,8 @@
 # Access Review Lab
 
-Access Review Lab replays an identity and access management (IAM) offboarding review from timestamped exports. It checks whether a former employee's account still has a repository role and links each finding to the source records. The bundled case uses synthetic data.
+Access Review Lab replays an identity and access management (IAM) offboarding review from timestamped exports or GitHub role captures. It checks whether a former employee's account still has a repository role and links each finding to the source records. The bundled cases use synthetic data.
 
-[Live demo](https://xzl7v.github.io/access-review-lab/) · [Evidence Viewer](https://xzl7v.github.io/access-review-lab/viewer.html) · [Sample scenario](scenario.json) · [Evidence packet](docs/evidence.json)
+[Live demo](https://xzl7v.github.io/access-review-lab/) · [GitHub capture demo](https://xzl7v.github.io/access-review-lab/viewer.html#github) · [Evidence Viewer](https://xzl7v.github.io/access-review-lab/viewer.html) · [Evidence packet](docs/evidence.json)
 
 ## Quick start
 
@@ -16,6 +16,43 @@ python3 replay.py --verify docs/evidence.json
 ```
 
 The replay prints one verdict per snapshot and the source references for any matching grant path. Use `--scenario PATH` to review a different input. An invalid scenario or mismatched evidence packet exits with status `2`.
+
+## Review GitHub access
+
+Capture one account's effective role on one GitHub.com repository before and after a removal decision. A role downgrade to `Read` still grants repository access. An explicit `none` response for the same account and repository IDs verifies removal. An unavailable response, including HTTP 403 or 404, leaves the finding at **Needs evidence**.
+
+Replay the bundled captures with Python 3.10+.
+
+```sh
+python3 replay.py --github examples/github/manifest.json --output output/github-evidence.json
+python3 replay.py --github examples/github/manifest.json --verify output/github-evidence.json
+```
+
+Open the packet in the Evidence Viewer to compare the baseline with each follow-up and inspect its request status, GitHub request ID, and SHA-256 capture fingerprint. [GitHub capture demo](https://xzl7v.github.io/access-review-lab/viewer.html#github)
+
+### Collect a case
+
+Use a fine-grained token scoped to a repository you administer, with **Metadata (read)**. Load it into the local `GITHUB_TOKEN` environment variable. The collector reads repository metadata and the account's effective permission through GitHub's REST API. [GitHub permissions endpoint](https://docs.github.com/en/rest/collaborators/collaborators#get-repository-permissions-for-a-user)
+
+1. Capture the baseline after the employee's departure and before recording the removal decision.
+
+   ```sh
+   python3 github_capture.py --repository OWNER/REPO --account LOGIN --output output/github/baseline.json
+   ```
+
+2. Record the decision and apply the removal through your normal GitHub administration workflow. Capture a fresh follow-up afterward.
+
+   ```sh
+   python3 github_capture.py --repository OWNER/REPO --account LOGIN --output output/github/follow-up.json
+   ```
+
+3. Copy the [example manifest](examples/github/manifest.json) to `output/github/manifest.json`. Set the case details and reference your capture files in order, starting with the baseline.
+
+   ```sh
+   python3 replay.py --github output/github/manifest.json --output output/github/evidence.json
+   ```
+
+The receipts record the observation window in UTC, stable GitHub IDs, and the fields used for the decision. HTTP errors leave a receipt and make the capture command exit with status `2`. Replay checks the scope against the baseline and hashes the original capture files. The viewer opens evidence locally in the browser.
 
 ## Sample case
 
@@ -104,7 +141,7 @@ python3 batch_review.py examples/batch/manifest.json --output output/batch
 
 Open `output/batch/batch.json` in the Evidence Viewer to filter cases by outcome. Selecting a case opens its recorded follow-up and evidence in the same page. [Open the sample batch](https://xzl7v.github.io/access-review-lab/viewer.html#batch)
 
-Use `scenario` for a JSON case or `exports` for a CSV manifest. Input paths are relative to the batch manifest, and case IDs must be unique. Each case needs a follow-up snapshot. When a case has several, set `follow_up` to the snapshot ID the report should use. [Example batch manifest](examples/batch/manifest.json)
+Use `scenario` for a JSON case, `exports` for a CSV manifest, or `github` for a GitHub capture manifest. Input paths are relative to the batch manifest, and case IDs must be unique. Each case needs a follow-up snapshot. When a case has several, set `follow_up` to the snapshot ID the report should use. [Example batch manifest](examples/batch/manifest.json)
 
 Add `--provenance` to include file hashes and record numbers in the packets for CSV cases.
 

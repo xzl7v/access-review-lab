@@ -1,0 +1,19 @@
+{
+  "case": {
+    "id": "GH-001",
+    "employee_id": "E-304",
+    "employee_end_at": "2026-11-20T07:30:00+00:00",
+    "decision": {
+      "action": "revoke_role",
+      "recorded_at": "2026-11-20T07:35:00+00:00",
+      "reviewer": "Identity Operations",
+      "reason": "Remove the former employee's assigned role on the release repository."
+    }
+  },
+  "snapshots": [
+    {"id": "baseline", "file": "baseline.json"},
+    {"id": "role-reduced", "file": "role-reduced.json"},
+    {"id": "lookup-denied", "file": "lookup-denied.json"},
+    {"id": "access-removed", "file": "access-removed.json"}
+  ]
+}

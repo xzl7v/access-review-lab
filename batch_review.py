@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 from csv_exports import read_csv_exports
 from evidence import build_packet, load_json, pretty_json, resolve_input_file
+from github_capture import load_github_review
 
 BATCH_VERSION = 1
 VERDICTS = {
@@ -20,18 +21,21 @@ MARKDOWN_ENTITIES = str.maketrans({char: f"&#{ord(char)};" for char in r"\|&<>[]
 
 
 def _read_case(directory: Path, entry: object, *, include_provenance: bool) -> tuple[dict, dict]:
-    input_names = {"scenario", "exports"}
+    input_names = {"scenario", "exports", "github"}
     if not isinstance(entry, dict):
         raise ValueError("each case entry must be an object")
     inputs = entry.keys() & input_names
     if len(inputs) != 1 or entry.keys() - (input_names | {"follow_up"}):
-        raise ValueError("each case needs one scenario or exports path and an optional follow_up")
+        raise ValueError("each case needs one scenario, exports, or github path and an optional follow_up")
 
     kind = inputs.pop()
     input_path = resolve_input_file(directory, entry[kind], "case input")
     if kind == "exports":
         loaded = read_csv_exports(input_path, include_provenance=include_provenance)
         packet = build_packet(loaded.scenario, source_provenance=loaded.source_provenance)
+    elif kind == "github":
+        scenario, _ = load_github_review(input_path)
+        packet = build_packet(scenario)
     else:
         packet = build_packet(load_json(input_path))
     case_id = packet["case"]["id"]
@@ -89,7 +93,7 @@ def _render_report(reviews: list[tuple[dict, dict]]) -> str:
         case = packet["case"]
         verdict = observation["verdict"]
         reason = observation["reason"]
-        if verdict == "still_granted":
+        if verdict == "still_granted" and "effective_role" not in observation:
             paths = (
                 "Direct grant" if path["kind"] == "direct" else f"Team grant via {path['team_id']}"
                 for path in observation["paths"]

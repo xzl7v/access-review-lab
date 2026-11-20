@@ -33,19 +33,23 @@ def resolve_input_file(directory: Path, reference: object, label: str) -> Path:
     return path
 
 
-def load_json(path: Path) -> dict:
+def parse_json(content: str, label: str) -> dict:
     def unique_keys(pairs):
         value = {}
         for key, item in pairs:
             if key in value:
-                raise ValueError(f"duplicate JSON key {key!r} in {path.name}")
+                raise ValueError(f"duplicate JSON key {key!r} in {label}")
             value[key] = item
         return value
 
-    value = json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=unique_keys)
+    value = json.loads(content, object_pairs_hook=unique_keys)
     if not isinstance(value, dict):
-        raise ValueError(f"{path.name} must contain a JSON object")
+        raise ValueError(f"{label} must contain a JSON object")
     return value
+
+
+def load_json(path: Path) -> dict:
+    return parse_json(path.read_text(encoding="utf-8-sig"), path.name)
 
 
 def canonical_json(value: object) -> str:
@@ -92,14 +96,17 @@ def build_packet(scenario: dict, *, source_provenance: dict | None = None) -> di
     return packet
 
 
-def write_atomic(path: Path, content: str) -> None:
+def write_atomic(path: Path, content: str, *, replace: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with NamedTemporaryFile("w", encoding="utf-8", newline="\n", dir=path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(content)
-        os.replace(temporary, path)
+        if replace:
+            os.replace(temporary, path)
+        else:
+            os.link(temporary, path)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

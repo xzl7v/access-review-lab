@@ -1,0 +1,23 @@
+{
+  "capture_version": 1,
+  "origin": "synthetic",
+  "api_version": "2026-03-10",
+  "started_at": "2026-11-20T07:40:00+00:00",
+  "captured_at": "2026-11-20T07:40:01+00:00",
+  "repository": "example-org/release-runbooks",
+  "account": "review-subject-demo",
+  "repository_lookup": {
+    "status": 200,
+    "request_id": "SYNTHETIC:REDUCED:REPO",
+    "data": {"id": 55001, "full_name": "example-org/release-runbooks"}
+  },
+  "role_lookup": {
+    "status": 200,
+    "request_id": "SYNTHETIC:REDUCED:ROLE",
+    "data": {
+      "permission": "read",
+      "role_name": "read",
+      "user": {"id": 71001, "login": "review-subject-demo"}
+    }
+  }
+}

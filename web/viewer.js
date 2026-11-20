@@ -8,11 +8,14 @@ const verdicts = {
 };
 const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 };
 const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing", invalid: "Invalid" };
+const githubModel = "github_effective";
+const githubSource = "github_permission";
 const sourceLabels = {
   direct_grants: ["Direct grant", "Direct grants"],
   team_memberships: ["Team membership", "Team memberships"],
   team_grants: ["Team grant", "Team grants"],
   team_links: ["Team link", "Team links"],
+  github_permission: ["GitHub role response", "GitHub role capture"],
 };
 const byId = id => document.getElementById(id);
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -41,6 +44,12 @@ function validatePacket(packet) {
   requirePacket(isObject(evidence) && isObject(evidence["/case/decision"])
     && Array.isArray(observations) && observations.length > 0,
     "The packet needs observations and decision evidence.");
+  const github = review.access_model === githubModel;
+  if (github) {
+    requirePacket(isObject(review.github_scope) && ["github", "synthetic"].includes(review.github_scope.origin)
+      && hasText(observations[0]?.effective_role),
+      "The packet is missing the GitHub capture origin or baseline role.");
+  }
   const citedRecords = new Set();
 
   for (const [index, observation] of observations.entries()) {
@@ -53,7 +62,8 @@ function validatePacket(packet) {
       && Object.values(observation.source_coverage).every(state => hasText(state) && Object.hasOwn(coverageLabels, state))
       && Array.isArray(observation.paths), "The packet contains an incomplete snapshot.");
     for (const path of observation.paths) {
-      requirePacket(isObject(path) && (path.kind === "direct" || (path.kind === "team" && hasText(path.team_id)))
+      requirePacket(isObject(path) && (github ? path.kind === "effective"
+        : path.kind === "direct" || (path.kind === "team" && hasText(path.team_id)))
         && Array.isArray(path.evidence) && path.evidence.length > 0,
         "The packet contains an incomplete access path.");
       for (const reference of path.evidence) {
@@ -133,12 +143,27 @@ function showRecord(packet, title, reference, record) {
   const location = provenance?.records[reference];
   const source = provenance?.sources[location?.source_ref ?? reference];
   const fields = byId("record-fields");
-  fields.hidden = !source;
-  renderFields(fields, source ? [
+  let metadata = source ? [
     ["CSV file", source.file],
     location ? ["CSV record", String(location.record_number)] : ["CSV records", String(source.record_count)],
     ["SHA-256", source.sha256],
-  ] : []);
+  ] : [];
+  if (packet.case.access_model === githubModel && reference.endsWith("/sources/" + githubSource)
+      && isObject(record.capture)) {
+    const capture = record.capture;
+    const lookup = capture.role_lookup;
+    const user = lookup?.data?.user ?? capture.account_lookup?.data;
+    metadata = [
+      ["Capture file", record.file],
+      ["Repository ID", capture.repository_lookup?.data?.id ?? "Unresolved"],
+      ["Account ID", user?.id ?? "Unresolved"],
+      ["Role lookup", Number.isInteger(lookup?.status) ? "HTTP " + lookup.status : "Unavailable"],
+      ["GitHub request ID", lookup?.request_id ?? "Unavailable"],
+      ["SHA-256", record.sha256],
+    ];
+  }
+  fields.hidden = !metadata.length;
+  renderFields(fields, metadata);
 
   const data = byId("record-data");
   try {
@@ -158,7 +183,19 @@ function showObservation(packet, observation) {
   time.textContent = observation.captured_at;
   time.dateTime = observation.captured_at;
   byId("snapshot-reason").textContent = observation.reason;
+  const github = packet.case.access_model === githubModel;
+  const comparison = byId("role-comparison");
+  comparison.hidden = !github;
+  if (github) {
+    comparison.dataset.verdict = observation.verdict;
+    renderFields(comparison, [
+      ["Baseline role", humanize(packet.observations[0].effective_role)],
+      ["Selected capture", hasText(observation.effective_role) ? humanize(observation.effective_role) : "Unresolved"],
+    ]);
+  }
   const paths = byId("access-paths");
+  paths.hidden = github;
+  byId("paths-title").hidden = github;
   const coverage = byId("source-coverage");
   const records = byId("snapshot-records");
   paths.replaceChildren();
@@ -190,7 +227,7 @@ function showObservation(packet, observation) {
     return button;
   }
 
-  for (const path of observation.paths) {
+  for (const path of github ? [] : observation.paths) {
     const group = element("div", "", "path");
     const title = path.kind === "direct" ? "Direct grant" : "Team grant via " + path.team_id;
     const steps = element("ol");
@@ -227,11 +264,15 @@ function showObservation(packet, observation) {
 
 function renderPacket(packet, selectedIndex) {
   byId("case-title").textContent = "Case " + packet.case.id;
-  renderFields(byId("case-fields"), [
+  const fields = [
     ["Account", packet.case.account_id],
     ["Repository", packet.case.repository],
     ["Role", packet.case.role],
-  ]);
+  ];
+  if (packet.case.access_model === githubModel) {
+    fields.push(["Capture origin", packet.case.github_scope.origin === "synthetic" ? "Synthetic data" : "GitHub REST API"]);
+  }
+  renderFields(byId("case-fields"), fields);
   const options = byId("snapshot-options");
   const buttons = packet.observations.map((observation, index) => {
     const button = element("button", humanize(observation.snapshot), "snapshot-option");
@@ -363,7 +404,10 @@ function loadSample(id, name) {
 
 const loadSampleReview = () => loadSample("sample-packet", "Sample packet");
 const loadSampleBatch = () => loadSample("sample-batch", "Sample batch");
+const loadGithubSample = () => loadSample("sample-github", "GitHub capture sample");
 byId("load-sample").addEventListener("click", loadSampleReview);
 byId("load-batch-sample").addEventListener("click", loadSampleBatch);
+byId("load-github-sample").addEventListener("click", loadGithubSample);
 if (window.location.hash === "#batch") loadSampleBatch();
+else if (window.location.hash === "#github") loadGithubSample();
 else loadSampleReview();

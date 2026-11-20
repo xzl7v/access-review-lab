@@ -98,6 +98,11 @@
     .snapshot-title { margin-top: 3px; font-size: 1.42rem; line-height: 1.18; overflow-wrap: anywhere; }
     .stamp, .reason { color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
     .stamp { display: block; font-size: .86rem; }
+    .role-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+    .role-comparison > div { padding: 9px 12px; background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; }
+    .role-comparison dd { margin-top: 4px; font-size: 1.1rem; }
+    .role-comparison[data-verdict="verified_removed"] > div:last-child dd { color: var(--mint); }
+    .role-comparison[data-verdict="inconclusive"] > div:last-child dd { color: #a6caff; }
     .section-title { font-size: .97rem; margin-block: 18px 9px; padding-top: 14px; border-top: 1px solid var(--border); }
     .paths { display: grid; gap: 12px; }
     .path h3 { font-size: .9rem; overflow-wrap: anywhere; }
@@ -151,6 +156,7 @@
       </div>
       <div class="actions">
         <button class="primary" type="button" id="open-packet">Open JSON file</button>
+        <button type="button" id="load-github-sample">GitHub capture sample</button>
         <button type="button" id="load-sample">Load sample</button>
         <button type="button" id="load-batch-sample">Load sample batch</button>
         <input type="file" id="packet-file" aria-label="Evidence or batch file" accept=".json,application/json" hidden>
@@ -203,7 +209,8 @@
           <h2 class="snapshot-title" id="snapshot-title"></h2>
           <time class="stamp" id="snapshot-time"></time>
           <p class="reason" id="snapshot-reason"></p>
-          <h3 class="section-title">Access paths</h3>
+          <dl class="fields role-comparison" id="role-comparison" aria-label="Effective role comparison" hidden></dl>
+          <h3 class="section-title" id="paths-title">Access paths</h3>
           <div class="paths" id="access-paths"></div>
           <h3 class="section-title">Source coverage</h3>
           <div class="coverage-list" id="source-coverage"></div>
@@ -221,6 +228,7 @@
   </main>
   <script type="text/plain" id="sample-packet">$evidence_payload</script>
   <script type="text/plain" id="sample-batch">$batch_payload</script>
+  <script type="text/plain" id="sample-github">$github_payload</script>
   <script>$viewer_script</script>
 </body>
 </html>
