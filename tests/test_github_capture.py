@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from io import BytesIO, StringIO
 import json
@@ -65,6 +66,59 @@ class GitHubCaptureTests(unittest.TestCase):
         self.assertEqual(effective_role(capture).user_id, 71001)
         self.assertEqual(effective_role(capture).permission, "none")
         self.assertNotIn("omit-this", pretty_json(capture))
+
+    def test_capture_commands_produce_replayable_offboarding_evidence(self):
+        repository = {"id": 55001, "full_name": REPOSITORY}
+        account = {"id": 71001, "login": ACCOUNT}
+        opener = Mock()
+        opener.open.side_effect = [
+            response(repository, "TEST:BEFORE:REPO"),
+            response({"permission": "write", "role_name": "write", "user": account}, "TEST:BEFORE:ROLE"),
+            response(repository, "TEST:AFTER:REPO"),
+            response({"permission": "none", "role_name": "none", "user": None}, "TEST:AFTER:ROLE"),
+            response(account, "TEST:AFTER:USER"),
+        ]
+        decision_time = datetime(2026, 11, 20, 7, 35, tzinfo=timezone.utc)
+        with TemporaryDirectory() as root:
+            directory = Path(root)
+            snapshots = [{"id": stage, "file": f"{stage}.json"} for stage in ("baseline", "follow-up")]
+            with (patch("github_access.build_opener", return_value=opener),
+                  patch("github_access.datetime") as clock,
+                  patch.dict("os.environ", {"GITHUB_TOKEN": "test-token"}),
+                  patch("sys.stdout", StringIO())):
+                clock.now.side_effect = [decision_time + timedelta(seconds=offset)
+                                         for offset in (-120, -119, 60, 61)]
+                for snapshot in snapshots:
+                    args = ["github_capture.py", "--repository", REPOSITORY, "--account", ACCOUNT,
+                            "--output", str(directory / snapshot["file"])]
+                    with patch("sys.argv", args):
+                        self.assertEqual(capture_command(), 0)
+
+            manifest = directory / "manifest.json"
+            manifest.write_text(pretty_json({
+                "case": {
+                    "id": "GH-TEST",
+                    "employee_id": "E-TEST",
+                    "employee_end_at": (decision_time - timedelta(minutes=5)).isoformat(),
+                    "decision": {
+                        "action": "revoke_role",
+                        "recorded_at": decision_time.isoformat(),
+                        "reviewer": "Identity Operations",
+                        "reason": "Remove the test collaborator's repository access.",
+                    },
+                },
+                "snapshots": snapshots,
+            }), encoding="utf-8")
+            packet = directory / "packet.json"
+            command = [sys.executable, "-B", str(ROOT / "replay.py"), "--github", str(manifest)]
+            written = subprocess.run([*command, "--output", str(packet)], capture_output=True, text=True)
+            self.assertEqual(written.returncode, 0, written.stderr)
+            self.assertEqual(
+                [(item["verdict"], item["effective_role"]) for item in load_json(packet)["observations"]],
+                [("detected", "write"), ("verified_removed", "none")],
+            )
+            verified = subprocess.run([*command, "--verify", str(packet)], capture_output=True, text=True)
+            self.assertEqual(verified.returncode, 0, verified.stderr)
 
     def test_http_error_saves_a_receipt_and_exits_nonzero(self):
         opener = Mock()
