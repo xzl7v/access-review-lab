@@ -50,6 +50,8 @@ Open the packet in the Evidence Viewer to compare the baseline with each follow-
 
 Use a fine-grained token scoped to a repository you administer, with **Metadata (read)**. Load it into the local `GITHUB_TOKEN` environment variable. The collector reads repository metadata and the account's effective permission through GitHub's REST API. [GitHub permissions endpoint](https://docs.github.com/en/rest/collaborators/collaborators#get-repository-permissions-for-a-user)
 
+For a live exercise, use a private repository with test data and a separate test collaborator. Capture the baseline after the collaborator accepts the invitation.
+
 1. Capture the baseline after the employee's departure and before recording the removal decision.
 
    ```sh
@@ -66,6 +68,7 @@ Use a fine-grained token scoped to a repository you administer, with **Metadata 
 
    ```sh
    python3 replay.py --github output/github/manifest.json --output output/github/evidence.json
+   python3 replay.py --github output/github/manifest.json --verify output/github/evidence.json
    ```
 
 The receipts record the observation window in UTC, stable GitHub IDs, and the fields used for the decision. HTTP errors leave a receipt and make the capture command exit with status `2`. Replay checks the scope against the baseline and hashes the original capture files. The viewer opens evidence locally in the browser.
@@ -194,3 +197,7 @@ python3 build_demo.py --check
 ```
 
 Run `python3 build_demo.py` after changing the sample inputs or files under `web/`. The browser logic tests use Node.js 22 and its built-in test runner. CI checks the generated workspace and guide, runs both test suites, and verifies the bundled evidence packet. [CI workflow](.github/workflows/ci.yml)
+
+## License
+
+[MIT](LICENSE)
