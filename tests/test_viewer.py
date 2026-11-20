@@ -48,3 +48,15 @@ class ViewerAssetsTests(unittest.TestCase):
         fingerprint = b64encode(sha256(script.group(1).encode("utf-8")).digest()).decode("ascii")
         self.assertIn("default-src 'none'", page)
         self.assertIn(f"script-src 'sha256-{fingerprint}'", page)
+
+    def test_viewer_bundles_github_comparison_and_request_evidence(self):
+        page = render_viewer()
+        encoded = re.search(r'<script type="text/plain" id="sample-github">([A-Za-z0-9+/=]+)</script>', page)
+        self.assertIsNotNone(encoded)
+        packet = json.loads(b64decode(encoded.group(1)))
+        self.assertEqual(packet["case"]["github_scope"]["origin"], "synthetic")
+        self.assertEqual([item.get("effective_role") for item in packet["observations"]],
+                         ["admin", "read", None, "none"])
+        denied = packet["evidence"]["/snapshots/2"]["sources"]["github_permission"]["capture"]
+        self.assertEqual(denied["role_lookup"]["status"], 403)
+        self.assertIn('id="role-comparison"', page)

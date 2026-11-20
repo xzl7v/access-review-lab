@@ -8,6 +8,7 @@ import sqlite3
 
 from csv_exports import read_csv_exports
 from evidence import build_packet, canonical_json, load_json, pretty_json, write_atomic
+from github_capture import load_github_review
 from ledger import record_review
 from review import assess, replay
 
@@ -19,6 +20,7 @@ def main() -> int:
     input_options = parser.add_mutually_exclusive_group()
     input_options.add_argument("--scenario", type=Path, help="Read a scenario JSON file.")
     input_options.add_argument("--exports", type=Path, help="Read a manifest of local CSV exports.")
+    input_options.add_argument("--github", type=Path, help="Review a manifest of saved GitHub role captures.")
     parser.add_argument("--provenance", action="store_true", help="Include CSV file hashes and record numbers.")
     parser.add_argument("--json", action="store_true", help="Print the evidence packet as JSON.")
     parser.add_argument("--output", type=Path, help="Write the evidence packet to a JSON file.")
@@ -29,7 +31,7 @@ def main() -> int:
         parser.error("--provenance requires --exports")
 
     try:
-        input_path = args.scenario or args.exports or Path(__file__).with_name("scenario.json")
+        input_path = args.scenario or args.exports or args.github or Path(__file__).with_name("scenario.json")
         paths = [path.resolve() for path in (input_path, args.output, args.verify, args.ledger) if path is not None]
         if len(paths) != len(set(paths)):
             raise ValueError("input, output, verification packet, and ledger need distinct paths")
@@ -39,6 +41,10 @@ def main() -> int:
             if loaded.paths.intersection(paths):
                 raise ValueError("CSV exports, output, verification packet, and ledger need distinct paths")
             scenario, source_provenance = loaded.scenario, loaded.source_provenance
+        elif args.github is not None:
+            scenario, captures = load_github_review(input_path)
+            if captures.intersection(paths[1:]):
+                raise ValueError("GitHub captures, output, verification packet, and ledger need distinct paths")
         else:
             scenario = load_json(input_path)
         packet = build_packet(scenario, source_provenance=source_provenance)
@@ -46,7 +52,11 @@ def main() -> int:
         if args.verify:
             submitted = load_json(args.verify)
             if canonical_json(submitted) != canonical_json(packet):
-                scope = "replayed scenario or CSV provenance" if args.provenance else "replayed scenario"
+                scope = "replayed scenario"
+                if args.provenance:
+                    scope += " or CSV provenance"
+                elif args.github is not None:
+                    scope += " or GitHub captures"
                 raise ValueError(f"evidence packet does not match the {scope}")
         if args.ledger:
             record_review(args.ledger, packet)
