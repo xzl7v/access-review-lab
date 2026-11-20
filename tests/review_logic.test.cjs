@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
-const { comparePaths, filterReviews, reviewCsv, caseBrief } = require("../web/review_logic.js");
+const { comparePaths, filterReviews, reviewCsv, caseBrief, evidenceFingerprints, verifyEvidenceFiles } =
+  require("../web/review_logic.js");
 
 const docs = path.resolve(__dirname, "../docs");
 const page = fs.readFileSync(path.join(docs, "index.html"), "utf8");
@@ -77,4 +78,57 @@ test("a case brief includes the selected observation, request ID, and capture fi
   assert.match(brief, /SYNTHETIC:DENIED:ROLE/);
   assert.ok(brief.includes(capture.sha256));
   assert.doesNotMatch(brief, /Verified removed/);
+});
+
+test("source fingerprints come from CSV provenance and GitHub capture receipts", () => {
+  const csv = evidenceFingerprints(sample("sample-packet"));
+  const github = evidenceFingerprints(sample("sample-github"));
+  const scenario = JSON.parse(fs.readFileSync(path.join(docs, "evidence.json"), "utf8"));
+  assert.equal(csv.length, 5);
+  assert.ok(csv.some(item => item.file === "memberships-after.csv"));
+  assert.equal(github.length, 4);
+  assert.ok(github.some(item => item.file === "lookup-denied.json"));
+  assert.deepEqual(evidenceFingerprints(scenario), []);
+});
+
+test("original receipts and exports verify against the byte fingerprints", async () => {
+  for (const [id, directory] of [["sample-packet", "csv"], ["sample-github", "github"]]) {
+    const fingerprints = evidenceFingerprints(sample(id));
+    const originalFiles = fingerprints.map(item => new File([
+      fs.readFileSync(path.join(docs, "../examples", directory, item.file)),
+    ], item.file));
+    const results = await verifyEvidenceFiles(fingerprints, originalFiles);
+    assert.equal(results.length, fingerprints.length);
+    assert.ok(results.every(item => item.status === "match" && item.actual === item.sha256));
+  }
+});
+
+test("the verifier distinguishes changed, missing, and unreadable source files", async () => {
+  const fingerprints = evidenceFingerprints(sample("sample-packet"));
+  const first = fingerprints[0].file;
+  const second = fingerprints[1].file;
+  const altered = new File([fs.readFileSync(path.join(docs, "../examples/csv", first)), "\n"], first);
+  const unreadable = { name: second, arrayBuffer: async () => { throw Error("Read failed"); } };
+  const results = await verifyEvidenceFiles(fingerprints, [altered, unreadable]);
+  assert.equal(results[0].status, "mismatch");
+  assert.notEqual(results[0].actual, results[0].sha256);
+  assert.equal(results[1].status, "unreadable");
+  assert.ok(results.slice(2).every(item => item.status === "missing"));
+});
+
+test("folder paths resolve repeated names and avoid hashing unrelated files", async () => {
+  const [original] = evidenceFingerprints(sample("sample-packet"));
+  const bytes = fs.readFileSync(path.join(docs, "../examples/csv", original.file));
+  const fingerprints = ["before", "after"].map(folder => ({
+    file: folder + "/" + original.file, sha256: original.sha256,
+  }));
+  const flat = new File([bytes], original.file);
+  const unknown = { name: "unrelated.txt", arrayBuffer: async () => assert.fail("Unreferenced file was read") };
+  const ambiguous = await verifyEvidenceFiles(fingerprints, [flat, unknown]);
+  assert.deepEqual(ambiguous.map(item => item.status), ["ambiguous", "ambiguous"]);
+  const chosenFolderFile = Object.assign(new File([bytes], original.file), {
+    webkitRelativePath: "manifest-folder/after/" + original.file,
+  });
+  const resolved = await verifyEvidenceFiles(fingerprints, [chosenFolderFile, unknown]);
+  assert.deepEqual(resolved.map(item => item.status), ["missing", "match"]);
 });

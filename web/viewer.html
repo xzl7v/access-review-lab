@@ -110,6 +110,14 @@
     .status[data-state="invalid"] { background: var(--error-bg); color: var(--error); }
     .status[data-state="retained"], .status[data-state="new"] { background: var(--well); color: var(--ink); }
     .case-head { padding: 14px 15px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+    .case-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .verification { padding: 13px 15px; border-top: 1px solid var(--line); }
+    .verification h3 { font-size: 1rem; }
+    .verification p { margin-block: 6px; }
+    .verification table { border: 1px solid var(--line); border-top: 0; }
+    .verification code { font: .8125rem/1.45 var(--mono); overflow-wrap: anywhere; }
+    .verification .received-hash { display: block; color: var(--error); margin-top: 3px; }
+    .verification .status { white-space: normal; }
     .case-fields { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 25px; }
     .fields dt { color: var(--muted); font-size: .875rem; }
     .fields dd { font-weight: 625; overflow-wrap: anywhere; }
@@ -229,9 +237,29 @@
     <section class="workspace" id="packet-view" aria-labelledby="case-title" hidden>
       <header class="case-head">
         <h2 id="case-title" tabindex="-1"></h2>
-        <button type="button" id="export-brief">Download case brief</button>
+        <div class="case-actions">
+          <button type="button" id="verify-evidence" aria-expanded="false" aria-controls="verification-panel">Verify evidence</button>
+          <button type="button" id="export-brief">Download case brief</button>
+        </div>
         <dl class="fields case-fields" id="case-fields"></dl>
       </header>
+      <section class="verification" id="verification-panel" aria-labelledby="verification-title" hidden>
+        <div class="section-head">
+          <h3 id="verification-title">Verify source files</h3>
+          <div class="case-actions" id="verification-actions">
+            <button type="button" id="choose-source-files">Choose files</button>
+            <button type="button" id="choose-source-folder">Choose source folder</button>
+            <input type="file" id="verification-files" aria-label="Original source files" multiple hidden>
+            <input type="file" id="verification-folder" aria-label="Original source folder" webkitdirectory multiple hidden>
+          </div>
+        </div>
+        <p class="supporting" id="verification-description">Compare the original files with the SHA-256 fingerprints recorded in this packet. The check runs on this device.</p>
+        <p class="supporting" id="verification-summary" role="status"></p>
+        <table id="verification-table">
+          <thead><tr><th scope="col">Source file</th><th scope="col">Recorded SHA-256</th><th scope="col">Result</th></tr></thead>
+          <tbody id="verification-results"></tbody>
+        </table>
+      </section>
       <nav class="timeline" aria-labelledby="timeline-title">
         <h3 id="timeline-title">Snapshot history</h3>
         <div class="timeline-items" id="snapshot-options"></div>

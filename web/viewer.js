@@ -4,7 +4,6 @@ const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 }
 const byId = id => document.getElementById(id);
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const hasText = value => typeof value === "string" && value.trim() !== "";
-const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 
 function requirePacket(condition, message) {
   if (!condition) throw new Error(message);
@@ -309,6 +308,80 @@ function saveDownload(filename, content, type) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const verificationLabels = {
+  waiting: ["Awaiting file", "unresolved"],
+  match: ["Match", "complete"],
+  mismatch: ["Mismatch", "invalid"],
+  missing: ["Missing file", "missing"],
+  ambiguous: ["Ambiguous filename", "partial"],
+  unreadable: ["Unreadable file", "invalid"],
+};
+let recordedFingerprints = [];
+let verificationRevision = 0;
+
+function displayVerification(results) {
+  const table = byId("verification-table");
+  table.hidden = !results.length;
+  byId("verification-results").replaceChildren(...results.map(result => {
+    const file = element("td", result.file);
+    const hash = element("td");
+    hash.append(element("code", result.sha256));
+    if (result.status === "mismatch") hash.append(element("code", "Selected: " + result.actual, "received-hash"));
+    const status = element("td");
+    status.append(statusLabel(...verificationLabels[result.status]));
+    const row = element("tr");
+    row.append(file, hash, status);
+    return row;
+  }));
+}
+
+function resetVerification(packet) {
+  verificationRevision++;
+  recordedFingerprints = packet ? evidenceFingerprints(packet) : [];
+  byId("verification-panel").hidden = true;
+  byId("verify-evidence").setAttribute("aria-expanded", "false");
+  byId("verification-actions").hidden = !recordedFingerprints.length;
+  byId("verification-description").hidden = !recordedFingerprints.length;
+  byId("verification-summary").textContent = recordedFingerprints.length
+    ? "Choose the original files or the folder containing the manifest."
+    : "File verification is available for GitHub captures and CSV packets with provenance.";
+  displayVerification(recordedFingerprints.map(file => ({ ...file, status: "waiting" })));
+}
+
+async function handleVerificationSelection(event) {
+  const input = event.currentTarget;
+  const files = Array.from(input.files);
+  input.value = "";
+  if (!files.length || !recordedFingerprints.length) return;
+  const revision = ++verificationRevision;
+  const summary = byId("verification-summary");
+  summary.textContent = "Checking SHA-256 fingerprints…";
+  try {
+    const results = await verifyEvidenceFiles(recordedFingerprints, files);
+    if (revision !== verificationRevision) return;
+    displayVerification(results);
+    const matches = results.filter(result => result.status === "match").length;
+    const ambiguous = results.some(result => result.status === "ambiguous");
+    summary.textContent = matches + " of " + results.length + " files match."
+      + (ambiguous ? " Choose the source folder to resolve repeated filenames." : "");
+  } catch (error) {
+    if (revision === verificationRevision) summary.textContent = error.message;
+  }
+}
+
+const verificationFiles = byId("verification-files");
+const verificationFolder = byId("verification-folder");
+byId("verify-evidence").addEventListener("click", () => {
+  const panel = byId("verification-panel");
+  panel.hidden = !panel.hidden;
+  byId("verify-evidence").setAttribute("aria-expanded", String(!panel.hidden));
+});
+byId("choose-source-files").addEventListener("click", () => verificationFiles.click());
+byId("choose-source-folder").hidden = !("webkitdirectory" in verificationFolder);
+byId("choose-source-folder").addEventListener("click", () => verificationFolder.click());
+verificationFiles.addEventListener("change", handleVerificationSelection);
+verificationFolder.addEventListener("change", handleVerificationSelection);
+
 function renderPacket(packet, selectedIndex) {
   const review = packet.case;
   const decision = packet.evidence["/case/decision"];
@@ -319,6 +392,7 @@ function renderPacket(packet, selectedIndex) {
     fields.push(["Capture origin", review.github_scope.origin === "synthetic" ? "Synthetic data" : "GitHub REST API"]);
   }
   renderFields(byId("case-fields"), fields);
+  resetVerification(packet);
   const options = byId("snapshot-options");
   const comparison = byId("snapshot-reference");
   let selected = selectedIndex ?? Math.max(packet.observations.findIndex(item => item.verdict === "still_granted"), 0);
@@ -400,7 +474,10 @@ function renderBatch(reviews) {
       button.setAttribute("aria-pressed", String(state === outcome));
     }
     if (shown.length) selectReview(shown.includes(selected) ? selected : shown[0]);
-    else byId("packet-view").hidden = true;
+    else {
+      byId("packet-view").hidden = true;
+      resetVerification(null);
+    }
     rows.replaceChildren(...shown.map(review => {
       const { id, account_id: account, repository } = review.packet.case;
       const item = review.packet.observations[review.index];

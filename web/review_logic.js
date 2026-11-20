@@ -9,6 +9,7 @@ const verdicts = {
 const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing", invalid: "Invalid" };
 const githubModel = "github_effective";
 const githubSource = "github_permission";
+const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const sources = {
   direct_grants: { label: "Direct grants", record: "Direct grant", fields: ["account_id", "repository", "role"] },
   team_memberships: { label: "Team memberships", record: "Team membership", fields: ["account_id", "team_id"] },
@@ -20,6 +21,77 @@ const sources = {
 function inputType(packet) {
   if (packet.case.access_model === githubModel) return "GitHub";
   return packet.packet_version === 2 ? "CSV with provenance" : "Scenario";
+}
+
+function sourcePath(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normal = value.replaceAll("\\", "/");
+  const parts = normal.split("/").filter(part => part && part !== ".");
+  return normal.startsWith("/") || /^[a-z]:/i.test(normal) || parts.includes("..")
+    ? null : parts.join("/") || null;
+}
+
+function evidenceFingerprints(packet) {
+  const records = packet.case.access_model === githubModel
+    ? packet.observations.map(observation => packet.evidence[observation.snapshot_ref]?.sources?.[githubSource])
+    : Object.values(packet.provenance?.sources ?? {});
+  const fingerprints = new Map();
+  for (const record of records) {
+    const file = sourcePath(record?.file);
+    if (!file || !isHash(record.sha256)) continue;
+    fingerprints.set(JSON.stringify([file, record.sha256]), { file, sha256: record.sha256 });
+  }
+  return Array.from(fingerprints.values()).sort((left, right) => left.file.localeCompare(right.file));
+}
+
+async function verifyEvidenceFiles(fingerprints, files) {
+  const crypto = globalThis.crypto?.subtle;
+  if (!crypto) throw new Error("SHA-256 verification requires a browser with Web Crypto.");
+  const fileName = path => path.split("/").at(-1);
+  const expectedPaths = new Map();
+  for (const { file } of fingerprints) {
+    const name = fileName(file);
+    const paths = expectedPaths.get(name) ?? new Set();
+    paths.add(file);
+    expectedPaths.set(name, paths);
+  }
+  const byPath = new Map();
+  const byName = new Map();
+  for (const file of files) {
+    const relative = file.webkitRelativePath;
+    const path = sourcePath(relative ? relative.split("/").slice(1).join("/") : file.name);
+    if (!path) continue;
+    const index = relative ? byPath : byName;
+    const entries = index.get(path) ?? [];
+    entries.push(file);
+    index.set(path, entries);
+  }
+  const hashes = new Map();
+  const results = [];
+  for (const fingerprint of fingerprints) {
+    const name = fileName(fingerprint.file);
+    const exact = byPath.get(fingerprint.file);
+    const candidates = exact ?? byName.get(name) ?? [];
+    if (!candidates.length) {
+      results.push({ ...fingerprint, status: "missing" });
+    } else if (candidates.length > 1 || (!exact && expectedPaths.get(name).size > 1)) {
+      results.push({ ...fingerprint, status: "ambiguous" });
+    } else {
+      const file = candidates[0];
+      if (!hashes.has(file)) {
+        try {
+          const digest = await crypto.digest("SHA-256", await file.arrayBuffer());
+          hashes.set(file, Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join(""));
+        } catch {
+          hashes.set(file, null);
+        }
+      }
+      const actual = hashes.get(file);
+      const status = actual === null ? "unreadable" : actual === fingerprint.sha256 ? "match" : "mismatch";
+      results.push({ ...fingerprint, status, actual });
+    }
+  }
+  return results;
 }
 
 function filterReviews(reviews, outcome, query) {
@@ -151,5 +223,5 @@ function caseBrief(packet, reference, selected) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { comparePaths, filterReviews, inputType, reviewCsv, caseBrief };
+  module.exports = { comparePaths, filterReviews, inputType, reviewCsv, caseBrief, evidenceFingerprints, verifyEvidenceFiles };
 }

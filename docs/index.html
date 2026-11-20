@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'sha256-VxrRlKxIuXUdCWRfi7xlSlfYUSbwLjVbX8q+y8eWArE='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+        content="default-src 'none'; script-src 'sha256-86eesIVQeB118ifrw8OiR27YR1xpzBxtVgd++5tFeYM='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <title>Access Review Lab | Access Reviews</title>
   <style>
     :root {
@@ -110,6 +110,14 @@
     .status[data-state="invalid"] { background: var(--error-bg); color: var(--error); }
     .status[data-state="retained"], .status[data-state="new"] { background: var(--well); color: var(--ink); }
     .case-head { padding: 14px 15px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+    .case-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .verification { padding: 13px 15px; border-top: 1px solid var(--line); }
+    .verification h3 { font-size: 1rem; }
+    .verification p { margin-block: 6px; }
+    .verification table { border: 1px solid var(--line); border-top: 0; }
+    .verification code { font: .8125rem/1.45 var(--mono); overflow-wrap: anywhere; }
+    .verification .received-hash { display: block; color: var(--error); margin-top: 3px; }
+    .verification .status { white-space: normal; }
     .case-fields { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 25px; }
     .fields dt { color: var(--muted); font-size: .875rem; }
     .fields dd { font-weight: 625; overflow-wrap: anywhere; }
@@ -229,9 +237,29 @@
     <section class="workspace" id="packet-view" aria-labelledby="case-title" hidden>
       <header class="case-head">
         <h2 id="case-title" tabindex="-1"></h2>
-        <button type="button" id="export-brief">Download case brief</button>
+        <div class="case-actions">
+          <button type="button" id="verify-evidence" aria-expanded="false" aria-controls="verification-panel">Verify evidence</button>
+          <button type="button" id="export-brief">Download case brief</button>
+        </div>
         <dl class="fields case-fields" id="case-fields"></dl>
       </header>
+      <section class="verification" id="verification-panel" aria-labelledby="verification-title" hidden>
+        <div class="section-head">
+          <h3 id="verification-title">Verify source files</h3>
+          <div class="case-actions" id="verification-actions">
+            <button type="button" id="choose-source-files">Choose files</button>
+            <button type="button" id="choose-source-folder">Choose source folder</button>
+            <input type="file" id="verification-files" aria-label="Original source files" multiple hidden>
+            <input type="file" id="verification-folder" aria-label="Original source folder" webkitdirectory multiple hidden>
+          </div>
+        </div>
+        <p class="supporting" id="verification-description">Compare the original files with the SHA-256 fingerprints recorded in this packet. The check runs on this device.</p>
+        <p class="supporting" id="verification-summary" role="status"></p>
+        <table id="verification-table">
+          <thead><tr><th scope="col">Source file</th><th scope="col">Recorded SHA-256</th><th scope="col">Result</th></tr></thead>
+          <tbody id="verification-results"></tbody>
+        </table>
+      </section>
       <nav class="timeline" aria-labelledby="timeline-title">
         <h3 id="timeline-title">Snapshot history</h3>
         <div class="timeline-items" id="snapshot-options"></div>
@@ -288,6 +316,7 @@ const verdicts = {
 const coverageLabels = { complete: "Complete", partial: "Partial", missing: "Missing", invalid: "Invalid" };
 const githubModel = "github_effective";
 const githubSource = "github_permission";
+const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const sources = {
   direct_grants: { label: "Direct grants", record: "Direct grant", fields: ["account_id", "repository", "role"] },
   team_memberships: { label: "Team memberships", record: "Team membership", fields: ["account_id", "team_id"] },
@@ -299,6 +328,77 @@ const sources = {
 function inputType(packet) {
   if (packet.case.access_model === githubModel) return "GitHub";
   return packet.packet_version === 2 ? "CSV with provenance" : "Scenario";
+}
+
+function sourcePath(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normal = value.replaceAll("\\", "/");
+  const parts = normal.split("/").filter(part => part && part !== ".");
+  return normal.startsWith("/") || /^[a-z]:/i.test(normal) || parts.includes("..")
+    ? null : parts.join("/") || null;
+}
+
+function evidenceFingerprints(packet) {
+  const records = packet.case.access_model === githubModel
+    ? packet.observations.map(observation => packet.evidence[observation.snapshot_ref]?.sources?.[githubSource])
+    : Object.values(packet.provenance?.sources ?? {});
+  const fingerprints = new Map();
+  for (const record of records) {
+    const file = sourcePath(record?.file);
+    if (!file || !isHash(record.sha256)) continue;
+    fingerprints.set(JSON.stringify([file, record.sha256]), { file, sha256: record.sha256 });
+  }
+  return Array.from(fingerprints.values()).sort((left, right) => left.file.localeCompare(right.file));
+}
+
+async function verifyEvidenceFiles(fingerprints, files) {
+  const crypto = globalThis.crypto?.subtle;
+  if (!crypto) throw new Error("SHA-256 verification requires a browser with Web Crypto.");
+  const fileName = path => path.split("/").at(-1);
+  const expectedPaths = new Map();
+  for (const { file } of fingerprints) {
+    const name = fileName(file);
+    const paths = expectedPaths.get(name) ?? new Set();
+    paths.add(file);
+    expectedPaths.set(name, paths);
+  }
+  const byPath = new Map();
+  const byName = new Map();
+  for (const file of files) {
+    const relative = file.webkitRelativePath;
+    const path = sourcePath(relative ? relative.split("/").slice(1).join("/") : file.name);
+    if (!path) continue;
+    const index = relative ? byPath : byName;
+    const entries = index.get(path) ?? [];
+    entries.push(file);
+    index.set(path, entries);
+  }
+  const hashes = new Map();
+  const results = [];
+  for (const fingerprint of fingerprints) {
+    const name = fileName(fingerprint.file);
+    const exact = byPath.get(fingerprint.file);
+    const candidates = exact ?? byName.get(name) ?? [];
+    if (!candidates.length) {
+      results.push({ ...fingerprint, status: "missing" });
+    } else if (candidates.length > 1 || (!exact && expectedPaths.get(name).size > 1)) {
+      results.push({ ...fingerprint, status: "ambiguous" });
+    } else {
+      const file = candidates[0];
+      if (!hashes.has(file)) {
+        try {
+          const digest = await crypto.digest("SHA-256", await file.arrayBuffer());
+          hashes.set(file, Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join(""));
+        } catch {
+          hashes.set(file, null);
+        }
+      }
+      const actual = hashes.get(file);
+      const status = actual === null ? "unreadable" : actual === fingerprint.sha256 ? "match" : "mismatch";
+      results.push({ ...fingerprint, status, actual });
+    }
+  }
+  return results;
 }
 
 function filterReviews(reviews, outcome, query) {
@@ -430,7 +530,7 @@ function caseBrief(packet, reference, selected) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { comparePaths, filterReviews, inputType, reviewCsv, caseBrief };
+  module.exports = { comparePaths, filterReviews, inputType, reviewCsv, caseBrief, evidenceFingerprints, verifyEvidenceFiles };
 }
 
 "use strict";
@@ -439,7 +539,6 @@ const batchPriority = { still_granted: 0, inconclusive: 1, verified_removed: 2 }
 const byId = id => document.getElementById(id);
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const hasText = value => typeof value === "string" && value.trim() !== "";
-const isHash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 
 function requirePacket(condition, message) {
   if (!condition) throw new Error(message);
@@ -744,6 +843,80 @@ function saveDownload(filename, content, type) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const verificationLabels = {
+  waiting: ["Awaiting file", "unresolved"],
+  match: ["Match", "complete"],
+  mismatch: ["Mismatch", "invalid"],
+  missing: ["Missing file", "missing"],
+  ambiguous: ["Ambiguous filename", "partial"],
+  unreadable: ["Unreadable file", "invalid"],
+};
+let recordedFingerprints = [];
+let verificationRevision = 0;
+
+function displayVerification(results) {
+  const table = byId("verification-table");
+  table.hidden = !results.length;
+  byId("verification-results").replaceChildren(...results.map(result => {
+    const file = element("td", result.file);
+    const hash = element("td");
+    hash.append(element("code", result.sha256));
+    if (result.status === "mismatch") hash.append(element("code", "Selected: " + result.actual, "received-hash"));
+    const status = element("td");
+    status.append(statusLabel(...verificationLabels[result.status]));
+    const row = element("tr");
+    row.append(file, hash, status);
+    return row;
+  }));
+}
+
+function resetVerification(packet) {
+  verificationRevision++;
+  recordedFingerprints = packet ? evidenceFingerprints(packet) : [];
+  byId("verification-panel").hidden = true;
+  byId("verify-evidence").setAttribute("aria-expanded", "false");
+  byId("verification-actions").hidden = !recordedFingerprints.length;
+  byId("verification-description").hidden = !recordedFingerprints.length;
+  byId("verification-summary").textContent = recordedFingerprints.length
+    ? "Choose the original files or the folder containing the manifest."
+    : "File verification is available for GitHub captures and CSV packets with provenance.";
+  displayVerification(recordedFingerprints.map(file => ({ ...file, status: "waiting" })));
+}
+
+async function handleVerificationSelection(event) {
+  const input = event.currentTarget;
+  const files = Array.from(input.files);
+  input.value = "";
+  if (!files.length || !recordedFingerprints.length) return;
+  const revision = ++verificationRevision;
+  const summary = byId("verification-summary");
+  summary.textContent = "Checking SHA-256 fingerprints…";
+  try {
+    const results = await verifyEvidenceFiles(recordedFingerprints, files);
+    if (revision !== verificationRevision) return;
+    displayVerification(results);
+    const matches = results.filter(result => result.status === "match").length;
+    const ambiguous = results.some(result => result.status === "ambiguous");
+    summary.textContent = matches + " of " + results.length + " files match."
+      + (ambiguous ? " Choose the source folder to resolve repeated filenames." : "");
+  } catch (error) {
+    if (revision === verificationRevision) summary.textContent = error.message;
+  }
+}
+
+const verificationFiles = byId("verification-files");
+const verificationFolder = byId("verification-folder");
+byId("verify-evidence").addEventListener("click", () => {
+  const panel = byId("verification-panel");
+  panel.hidden = !panel.hidden;
+  byId("verify-evidence").setAttribute("aria-expanded", String(!panel.hidden));
+});
+byId("choose-source-files").addEventListener("click", () => verificationFiles.click());
+byId("choose-source-folder").hidden = !("webkitdirectory" in verificationFolder);
+byId("choose-source-folder").addEventListener("click", () => verificationFolder.click());
+verificationFiles.addEventListener("change", handleVerificationSelection);
+verificationFolder.addEventListener("change", handleVerificationSelection);
+
 function renderPacket(packet, selectedIndex) {
   const review = packet.case;
   const decision = packet.evidence["/case/decision"];
@@ -754,6 +927,7 @@ function renderPacket(packet, selectedIndex) {
     fields.push(["Capture origin", review.github_scope.origin === "synthetic" ? "Synthetic data" : "GitHub REST API"]);
   }
   renderFields(byId("case-fields"), fields);
+  resetVerification(packet);
   const options = byId("snapshot-options");
   const comparison = byId("snapshot-reference");
   let selected = selectedIndex ?? Math.max(packet.observations.findIndex(item => item.verdict === "still_granted"), 0);
@@ -835,7 +1009,10 @@ function renderBatch(reviews) {
       button.setAttribute("aria-pressed", String(state === outcome));
     }
     if (shown.length) selectReview(shown.includes(selected) ? selected : shown[0]);
-    else byId("packet-view").hidden = true;
+    else {
+      byId("packet-view").hidden = true;
+      resetVerification(null);
+    }
     rows.replaceChildren(...shown.map(review => {
       const { id, account_id: account, repository } = review.packet.case;
       const item = review.packet.observations[review.index];
